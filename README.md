@@ -18,3 +18,18 @@ Interface web
 ↓
 consulta catálogo
 
+
+
+BUSCA AUTOMÁTICA
+↓
+Google
+↓
+coleta links de páginas
+↓
+scraper analisa página
+↓
+detecta OEM
+↓
+extrai detalhes da peça
+↓
+salva no banco
