@@ -3,5 +3,14 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+
 data/*.db
+
 .env
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-data/
