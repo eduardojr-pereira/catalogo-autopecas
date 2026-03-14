@@ -42,6 +42,34 @@ Este projeto foi desenvolvido como projeto de portfólio em engenharia e ciênci
 * automação de coleta de dados
 * arquitetura de pipelines
 
+### Habilidades Demonstradas
+Este projeto demonstra habilidades em diferentes áreas da engenharia e ciência de dados:
+
+#### Modelagem de Dados
+- Estruturação de entidades automotivas complexas
+- Relação entre veículos, motores, peças e equivalentes
+- Uso de schemas para separação lógica de camadas
+
+#### Engenharia de Dados
+- Pipeline de coleta e processamento de dados
+- Estrutura preparada para ingestão automática
+- Organização de dados brutos e dados normalizados
+
+#### Infraestrutura
+- Containerização com Docker
+- Banco PostgreSQL executando em ambiente isolado
+- Ambiente reproduzível para desenvolvimento
+
+#### Arquitetura de Sistemas
+- Separação entre coleta, processamento e catálogo
+- Estrutura preparada para API e expansão futura
+
+#### Automação de Dados
+- Preparação para scraping automatizado
+- Enriquecimento de dados via APIs
+- Normalização de códigos automotivos
+
+
 ---
 ---
 
