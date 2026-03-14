@@ -1,274 +1,41 @@
 # Catálogo Automotivo Inteligente
 
-Sistema de **catalogação técnica de autopeças** que relaciona veículos, peças, códigos OEM e equivalentes comerciais.
 
-O objetivo do projeto é construir uma base estruturada que permita identificar rapidamente **qual peça serve em qual veículo**, mesmo quando o usuário **não conhece o código OEM**.
 
-Este projeto simula a arquitetura de dados utilizada por **catálogos automotivos profissionais**, utilizados por autopeças, distribuidores e oficinas.
 
----
+# Visão Geral
+Projeto em desenvolvimento para construção de um **catálogo técnico automotivo inteligente**, capaz de:
+* descobrir códigos de peças automaticamente
+* identificar equivalências entre fabricantes
+* agrupar peças equivalentes em clusters
+* relacionar peças com motores e veículos
+* permitir busca por veículo, código ou peça
 
-# Problema de Negócio
+O objetivo final é criar uma **base estruturada de autopeças escalável**, que possa evoluir para APIs, ferramentas internas ou um SaaS.
 
+### Problema de Negócio
 No mercado automotivo, identificar a peça correta para um veículo pode ser difícil porque:
 
-* o cliente raramente possui o **código OEM**
-* diferentes fabricantes possuem **códigos equivalentes**
-* a mesma peça pode servir para **diversos veículos**
-* catálogos de fornecedores são **fragmentados**
+* o cliente raramente possui o código OEM
+* diferentes fabricantes possuem códigos equivalentes
+* a mesma peça pode servir para diversos veículos
+* catálogos de fornecedores são fragmentados
 
-Este projeto resolve esse problema criando um **catálogo estruturado e pesquisável**.
+Este projeto resolve esse problema criando um catálogo estruturado e pesquisável.
 
----
+### Objetivos do Projeto
+Construir um **catálogo automotivo inteligente e escalável**, capaz de consolidar informações de autopeças de múltiplas fontes e organizar essas informações em uma base consistente e consultável.
 
-# Objetivos do Projeto
-
-Construir um sistema capaz de:
-
+Capaz de:
 * coletar dados automotivos automaticamente
-* estruturar relações entre **veículos e peças**
-* mapear **OEM e equivalentes**
-* permitir busca por **veículo + nome da peça**
+* estruturar relações entre **veículos** e **peças**
+* mapear OEM e equivalentes
+* permitir busca por **veículo** + **nome da peça**
 * criar uma base escalável para APIs ou SaaS
 
----
+### Motivação
 
-# Tecnologias Utilizadas
-
-* Python — coleta e processamento de dados
-* PostgreSQL — banco de dados relacional
-* Docker — ambiente reproduzível
-* Web Scraping — coleta de informações técnicas
-* APIs automotivas — enriquecimento de dados
-
----
-
-# Arquitetura do Projeto
-
-```
-Internet
-   ↓
-Coleta automática (Scraping / APIs)
-   ↓
-Pipeline de processamento
-   ↓
-Banco de dados estruturado
-   ↓
-Catálogo automotivo pesquisável
-```
-
----
-
-# Modelo Conceitual
-
-O catálogo é estruturado em quatro entidades principais:
-
-```
-Veículo
-   ↓
-Aplicação
-   ↓
-Peça
-   ↓
-OEM / Equivalentes
-```
-
-Exemplo:
-
-```
-Veículo
-Gol 1.6 2015
-
-Peça
-Pastilha de Freio
-
-OEM
-VW 5U0698151
-
-Equivalentes
-Bosch BP1234
-Cobreq N1234
-```
-
----
-
-# Estrutura do Projeto
-
-```
-catalogo-auto
-│
-├── data
-│   └── datasets brutos
-│
-├── scripts
-│   ├── coleta
-│   ├── processamento
-│   └── carga
-│
-├── database
-│   └── schema.sql
-│
-├── docker
-│   └── docker-compose.yml
-│
-├── requirements.txt
-│
-└── README.md
-```
-
----
-
-# Configuração do Ambiente
-
-Este projeto utiliza **Docker** para garantir reprodutibilidade.
-
-## 1 — Clonar o repositório
-
-```
-git clone https://github.com/seuusuario/catalogo-auto.git
-```
-
-```
-cd catalogo-auto
-```
-
----
-
-## 2 — Subir o banco de dados
-
-```
-docker compose up -d
-```
-
-Isso iniciará um container com **PostgreSQL**.
-
----
-
-## 3 — Instalar dependências Python
-
-```
-pip install -r requirements.txt
-```
-
----
-
-# Pipeline de Dados
-
-O pipeline segue as seguintes etapas:
-
-### 1. Identificação da peça
-
-Entrada inicial:
-
-```
-veículo
-nome da peça
-```
-
-Exemplo:
-
-```
-Gol 1.6 2015
-pastilha de freio
-```
-
----
-
-### 2. Descoberta de código OEM
-
-Coleta automática em:
-
-* catálogos online
-* distribuidores
-* fabricantes
-
----
-
-### 3. Expansão de equivalentes
-
-Após obter o OEM:
-
-```
-OEM → equivalentes comerciais
-```
-
-Exemplo:
-
-```
-OEM VW 5U0698151
-
-equivalentes:
-
-Bosch
-TRW
-Cobreq
-Fras-le
-```
-
----
-
-### 4. Estruturação no banco
-
-Dados são inseridos no banco com relações:
-
-```
-veiculos
-pecas
-oem
-equivalentes
-aplicacoes
-```
-
----
-
-# Roadmap do Projeto
-
-## Fase 1 — Estrutura inicial
-
-* [x] Definição do modelo de dados
-* [x] Estrutura do repositório
-* [ ] Criação do banco
-
----
-
-## Fase 2 — Coleta de dados
-
-* [ ] Scraping de catálogos automotivos
-* [ ] Integração com APIs de veículos
-* [ ] Normalização de nomes de peças
-
----
-
-## Fase 3 — Inteligência do catálogo
-
-* [ ] Busca por veículo
-* [ ] Busca por nome da peça
-* [ ] Sugestão automática de equivalentes
-
----
-
-## Fase 4 — Interface
-
-* [ ] API de consulta
-* [ ] Interface web simples
-* [ ] Integração com sistemas de autopeças
-
----
-
-# Possíveis Evoluções
-
-O projeto pode evoluir para:
-
-* API pública de consulta de peças
-* integração com sistemas ERP de autopeças
-* sistema de recomendação de peças
-* catálogo SaaS para distribuidores
-
----
-
-# Motivação
-
-Este projeto foi desenvolvido como **projeto de portfólio em engenharia e ciência de dados**, demonstrando habilidades em:
+Este projeto foi desenvolvido como projeto de portfólio em engenharia e ciência de dados, demonstrando habilidades em:
 
 * modelagem de dados
 * engenharia de dados
@@ -276,15 +43,217 @@ Este projeto foi desenvolvido como **projeto de portfólio em engenharia e ciên
 * arquitetura de pipelines
 
 ---
+---
+
+# Arquitetura do Projeto
+
+O sistema está dividido em camadas principais:
+
+```
+Fontes de Dados
+      ↓
+Scrapers / APIs
+      ↓
+Data Raw
+      ↓
+Normalização de códigos
+      ↓
+Rede de equivalência
+      ↓
+Clusterização de peças
+      ↓
+Associação motor ↔ veículo
+      ↓
+Banco de dados do catálogo
+```
+---
+---
+
+
+# Estrutura do Projeto
+
+```
+catalogo_autopecas
+│
+├── database
+│   └── schema.sql            # Estrutura do banco PostgreSQL
+│
+├── docker
+│   └── docker-compose.yml    # Infraestrutura do banco com Docker
+│
+├── docs                      # Documentação do projeto
+│
+├── scripts                   # Scripts auxiliares
+│
+├── src                       # Código principal do sistema
+│
+├── tests                     # Testes
+│
+├── data                      # Arquivos de dados locais
+│
+├── venv                      # Ambiente virtual Python
+│
+├── requirements.txt
+├── .gitignore
+└── README.md
+```
+
+---
+---
+
+# Banco de Dados
+
+O banco utiliza **PostgreSQL rodando em container Docker**.
+
+Estrutura lógica do banco:
+
+## Schemas
+
+```
+reference   → dados estruturais (fabricantes, veículos, motores)
+
+discovery   → códigos de peças e equivalências descobertas
+
+catalog     → clusters de peças e aplicações consolidadas
+```
+
+## Principais tabelas
+
+```
+reference.manufacturers
+reference.vehicles
+reference.motors
+reference.vehicle_motors
+
+discovery.codes
+discovery.code_equivalences
+
+catalog.clusters
+catalog.cluster_codes
+catalog.applications
+```
+
+## Como subir o banco localmente
+
+Entre na pasta do projeto:
+
+```
+cd catalogo_autopecas/docker
+```
+
+Suba o banco:
+
+```
+docker compose up -d
+```
+
+Isso iniciará um container PostgreSQL.
+
+### Conexão com o banco
+
+```
+host: localhost
+port: 5432
+database: catalogo
+user: admin
+password: admin
+```
+
+### Inicializar estrutura do banco
+
+Executar o schema:
+
+```
+Get-Content ../database/schema.sql | docker exec -i catalogo_postgres psql -U admin -d catalogo
+```
+
+### Verificar tabelas
+
+Entrar no banco:
+
+```
+docker exec -it catalogo_postgres psql -U admin -d catalogo
+```
+
+Listar tabelas:
+
+```
+\dt *.*
+```
+
+---
+---
+
+# Requisitos
+
+* Docker Desktop
+* WSL2 (Windows)
+* Python 3.11+
+* VSCode (recomendado)
+
+---
+---
+
+# Roadmap do Projeto
+### Fase 1 — Estrutura inicial
+* [x] Definição do modelo de dados
+* [x] Estrutura do repositório
+* [x] Infraestrutura Docker
+* [x] Banco PostgreSQL containerizado
+
+### Fase 2 — Coleta de dados
+* [ ] Scraping de catálogos automotivos
+* [ ] Integração com APIs de veículos
+* [ ] Normalização de nomes de peças
+
+### Fase 3 — Inteligência do catálogo
+* [ ] Busca por veículo
+* [ ] Busca por nome da peça
+* [ ] Sugestão automática de equivalentes
+
+### Fase 4 — Interface
+* [ ] API de consulta
+* [ ] Interface web simples
+* [ ] Integração com sistemas de autopeças
+
+## Estado atual do projeto
+### Infraestrutura Concluída
+* Docker configurado
+* PostgreSQL containerizado
+* Schema inicial implementado
+* Estrutura de diretórios definida
+
+### Próximos Passos
+* validação do modelo de dados
+* normalização de códigos
+* pipeline de ingestão
+* coleta automática de dados de peças
+
+---
+---
+
+## Possíveis Evoluções
+* O projeto pode evoluir para:
+* API pública de consulta de peças
+* Integração com sistemas ERP de autopeças
+* Sistema de recomendação de peças
+* Catálogo SaaS para distribuidores
+
+---
+---
 
 # Autor
 
 Eduardo Pereira
 
-Economista e Cientista de Dados interessado em **engenharia de dados aplicada a problemas reais de negócio**.
+Economista e Cientista de Dados interessado em engenharia de dados aplicada a problemas reais de negócio.
 
+---
 ---
 
 # Licença
 
 Projeto de uso educacional e experimental.
+
+---
+---
