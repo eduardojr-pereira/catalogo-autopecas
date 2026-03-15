@@ -1,4 +1,152 @@
 /*
+===============================================================================
+schema.sql
+===============================================================================
+
+SCHEMA PRINCIPAL DO CATÁLOGO AUTOMOTIVO
+
+Este arquivo define a estrutura base do banco de dados PostgreSQL do projeto.
+
+Ele representa o núcleo estrutural do sistema e estabelece as entidades,
+relacionamentos, constraints e índices necessários para suportar:
+
+- descoberta de códigos
+- equivalências entre peças
+- clusterização
+- consolidação do catálogo
+- aplicações em motores e veículos
+
+
+-------------------------------------------------------------------------------
+VISÃO GERAL DA ARQUITETURA
+-------------------------------------------------------------------------------
+
+O banco é dividido em três schemas principais:
+
+reference
+    Dados estruturais e relativamente estáveis do domínio automotivo.
+
+discovery
+    Dados descobertos durante coleta, scraping, validação e enriquecimento.
+
+catalog
+    Dados consolidados e utilizáveis como catálogo final.
+
+
+-------------------------------------------------------------------------------
+SCHEMA REFERENCE
+-------------------------------------------------------------------------------
+
+Responsável por armazenar entidades fundamentais do domínio.
+
+Exemplos de tabelas:
+
+- reference.manufacturers
+- reference.part_types
+- reference.part_type_aliases
+- reference.vehicles
+- reference.motors
+- reference.vehicle_motors
+
+Essas tabelas representam o conhecimento base do sistema.
+
+
+-------------------------------------------------------------------------------
+SCHEMA DISCOVERY
+-------------------------------------------------------------------------------
+
+Responsável por armazenar dados coletados e relações descobertas.
+
+Exemplos de tabelas:
+
+- discovery.sources
+- discovery.codes
+- discovery.code_evidence
+- discovery.code_equivalences
+
+Essa camada é deliberadamente mais flexível, pois suporta hipóteses,
+descobertas e equivalências ainda não consolidadas.
+
+
+-------------------------------------------------------------------------------
+SCHEMA CATALOG
+-------------------------------------------------------------------------------
+
+Responsável por armazenar o catálogo consolidado.
+
+Exemplos de tabelas:
+
+- catalog.parts
+- catalog.part_attributes
+- catalog.clusters
+- catalog.cluster_codes
+- catalog.applications
+
+Essa camada é a base para buscas, fitment e futuras APIs.
+
+
+-------------------------------------------------------------------------------
+PRINCÍPIO DE NEGÓCIO MAIS IMPORTANTE
+-------------------------------------------------------------------------------
+
+Equivalência descoberta não implica identidade técnica absoluta.
+
+Por isso o schema foi desenhado para separar:
+
+- descoberta
+- validação
+- consolidação
+
+Essa separação reduz risco de erro técnico no catálogo final.
+
+
+-------------------------------------------------------------------------------
+OBJETIVOS ESTRUTURAIS DO SCHEMA
+-------------------------------------------------------------------------------
+
+- suportar crescimento incremental do catálogo
+- permitir rastreabilidade das equivalências
+- possibilitar clusterização de códigos
+- associar peças a motores e veículos
+- permitir evolução futura para SaaS automotivo
+
+
+-------------------------------------------------------------------------------
+RELAÇÃO COM OUTROS ARQUIVOS
+-------------------------------------------------------------------------------
+
+Este arquivo funciona em conjunto com:
+
+- database/seeds/reference_seed.sql
+- database/seeds/canonical_seed.sql
+- database/migrations/001_canonical_domain.sql
+- database/migrations/002_compatibility_engine.sql
+- database/migrations/003_publication_versioning.sql
+
+O `schema.sql` define a base principal.
+As migrations futuras expandirão essa base para níveis mais avançados
+de governança, compatibilidade e versionamento.
+
+
+-------------------------------------------------------------------------------
+STATUS
+-------------------------------------------------------------------------------
+
+Arquivo ativo e central do projeto.
+
+Toda alteração estrutural relevante do banco deve ser refletida aqui
+ou em migrations complementares, conforme a estratégia adotada.
+
+===============================================================================
+*/
+
+
+
+
+
+
+
+/*
 =========================================================
 CATÁLOGO AUTOMOTIVO - SCHEMA FINAL
 Banco: PostgreSQL
@@ -382,3 +530,6 @@ ON catalog.applications(vehicle_id);
 
 CREATE INDEX idx_applications_confidence
 ON catalog.applications(confidence_score);
+
+
+
