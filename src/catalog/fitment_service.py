@@ -1,15 +1,32 @@
 """
 fitment_service.py
 
-Responsável por consultas de aplicação automotiva (fitment).
+Serviços de consulta de fitment do catálogo automotivo.
 
-Exemplos de uso:
-- encontrar peças por veículo
-- encontrar peças por motor
-- filtrar por tipo de peça
+Responsável por:
+- buscar peças por veículo
+- buscar peças por motor
+- buscar fitment por filtros comerciais
+
+Observação:
+como a camada formal de publicação ainda não existe,
+o filtro `only_published=True` usa `catalog.parts.status = 'active'`
+como aproximação de catálogo visível.
 """
 
 from typing import Any
+
+
+def _rows_to_dicts(cursor) -> list[dict[str, Any]]:
+    """
+    Converte o resultado do cursor em lista de dicionários.
+
+    Isso facilita o consumo dos dados pelos serviços,
+    testes e futura API.
+    """
+    rows = cursor.fetchall()
+    columns = [desc[0] for desc in cursor.description]
+    return [dict(zip(columns, row)) for row in rows]
 
 
 def find_parts_by_vehicle_id(
@@ -19,71 +36,113 @@ def find_parts_by_vehicle_id(
     only_published: bool = False
 ) -> list[dict[str, Any]]:
     """
-    Busca peças aplicáveis a um veículo com base em:
-    vehicle -> vehicle_motors -> applications -> clusters -> parts
+    Busca peças aplicáveis a um veículo.
 
-    Regras:
-    - retorna apenas clusters vinculados a parts
-    - pode filtrar por tipo de peça
-    - pode filtrar apenas peças publicadas
+    Estratégia:
+    1. traz aplicações derivadas dos motores ligados ao veículo
+    2. traz aplicações cadastradas diretamente no veículo
+    3. une os dois conjuntos com UNION
+
+    Isso evita o uso de OR no JOIN, deixando a query mais clara.
     """
     query = """
-        SELECT DISTINCT
-            v.id AS vehicle_id,
-            v.brand,
-            v.model,
-            v.model_year,
-            p.id AS part_id,
-            p.name AS part_name,
-            p.normalized_name,
-            p.status AS part_status,
-            pt.id AS part_type_id,
-            pt.name AS part_type_name,
-            c.id AS cluster_id,
-            c.cluster_type,
-            a.id AS application_id,
-            a.position,
-            a.side,
-            a.notes,
-            a.source,
-            a.confidence_score
-        FROM reference.vehicles v
-        JOIN reference.vehicle_motors vm
-          ON vm.vehicle_id = v.id
-        JOIN catalog.applications a
-          ON a.motor_id = vm.motor_id
-             OR a.vehicle_id = v.id
-        JOIN catalog.clusters c
-          ON c.id = a.cluster_id
-        JOIN catalog.parts p
-          ON p.id = c.part_id
-        JOIN reference.part_types pt
-          ON pt.id = p.part_type_id
-        WHERE v.id = %s
+        SELECT DISTINCT *
+        FROM (
+
+            -- aplicações encontradas via motor do veículo
+            SELECT
+                v.id AS vehicle_id,
+                v.brand,
+                v.model,
+                v.model_year,
+                v.version,
+                p.id AS part_id,
+                p.name AS part_name,
+                p.normalized_name,
+                p.status AS part_status,
+                pt.id AS part_type_id,
+                pt.name AS part_type_name,
+                c.id AS cluster_id,
+                c.cluster_type,
+                a.id AS application_id,
+                a.position,
+                a.side,
+                a.notes,
+                a.source,
+                a.confidence_score
+            FROM reference.vehicles v
+            JOIN reference.vehicle_motors vm
+              ON vm.vehicle_id = v.id
+            JOIN catalog.applications a
+              ON a.motor_id = vm.motor_id
+            JOIN catalog.clusters c
+              ON c.id = a.cluster_id
+            JOIN catalog.parts p
+              ON p.id = c.part_id
+            JOIN reference.part_types pt
+              ON pt.id = p.part_type_id
+            WHERE v.id = %s
+
+            UNION
+
+            -- aplicações cadastradas diretamente no veículo
+            SELECT
+                v.id AS vehicle_id,
+                v.brand,
+                v.model,
+                v.model_year,
+                v.version,
+                p.id AS part_id,
+                p.name AS part_name,
+                p.normalized_name,
+                p.status AS part_status,
+                pt.id AS part_type_id,
+                pt.name AS part_type_name,
+                c.id AS cluster_id,
+                c.cluster_type,
+                a.id AS application_id,
+                a.position,
+                a.side,
+                a.notes,
+                a.source,
+                a.confidence_score
+            FROM reference.vehicles v
+            JOIN catalog.applications a
+              ON a.vehicle_id = v.id
+            JOIN catalog.clusters c
+              ON c.id = a.cluster_id
+            JOIN catalog.parts p
+              ON p.id = c.part_id
+            JOIN reference.part_types pt
+              ON pt.id = p.part_type_id
+            WHERE v.id = %s
+
+        ) fitment_result
+        WHERE 1 = 1
     """
 
-    params: list[Any] = [vehicle_id]
+    # o vehicle_id aparece duas vezes porque a query faz UNION
+    params: list[Any] = [vehicle_id, vehicle_id]
 
+    # filtro opcional por tipo de peça
     if part_type_id is not None:
-        query += " AND pt.id = %s"
+        query += " AND part_type_id = %s"
         params.append(part_type_id)
 
+    # por enquanto consideramos "active" como equivalente a publicado
     if only_published:
-        query += " AND p.status = 'active'"
+        query += " AND part_status = 'active'"
 
     query += """
         ORDER BY
-            pt.name,
-            p.name,
-            a.confidence_score DESC,
-            c.id
+            part_type_name,
+            part_name,
+            confidence_score DESC,
+            cluster_id
     """
 
     cursor.execute(query, tuple(params))
-    rows = cursor.fetchall()
-
-    columns = [desc[0] for desc in cursor.description]
-    return [dict(zip(columns, row)) for row in rows]
+    return _rows_to_dicts(cursor)
 
 
 def find_parts_by_motor_id(
@@ -128,10 +187,12 @@ def find_parts_by_motor_id(
 
     params: list[Any] = [motor_id]
 
+    # filtro opcional por tipo de peça
     if part_type_id is not None:
         query += " AND pt.id = %s"
         params.append(part_type_id)
 
+    # por enquanto consideramos "active" como equivalente a publicado
     if only_published:
         query += " AND p.status = 'active'"
 
@@ -144,10 +205,7 @@ def find_parts_by_motor_id(
     """
 
     cursor.execute(query, tuple(params))
-    rows = cursor.fetchall()
-
-    columns = [desc[0] for desc in cursor.description]
-    return [dict(zip(columns, row)) for row in rows]
+    return _rows_to_dicts(cursor)
 
 
 def find_fitment_by_vehicle_filters(
@@ -160,72 +218,115 @@ def find_fitment_by_vehicle_filters(
     only_published: bool = False
 ) -> list[dict[str, Any]]:
     """
-    Busca aplicações usando filtros comerciais de veículo.
+    Busca fitment usando filtros comerciais de veículo.
 
-    Ideal para cenários como:
+    Exemplo de uso:
     - Honda Civic 2010
     - Honda Civic 2010 filtro de óleo
     """
     query = """
-        SELECT DISTINCT
-            v.id AS vehicle_id,
-            v.brand,
-            v.model,
-            v.model_year,
-            v.version,
-            v.body_type,
-            v.fuel_type,
-            p.id AS part_id,
-            p.name AS part_name,
-            p.status AS part_status,
-            pt.id AS part_type_id,
-            pt.name AS part_type_name,
-            c.id AS cluster_id,
-            a.id AS application_id,
-            a.position,
-            a.side,
-            a.notes,
-            a.source,
-            a.confidence_score
-        FROM reference.vehicles v
-        JOIN reference.vehicle_motors vm
-          ON vm.vehicle_id = v.id
-        JOIN catalog.applications a
-          ON a.motor_id = vm.motor_id
-             OR a.vehicle_id = v.id
-        JOIN catalog.clusters c
-          ON c.id = a.cluster_id
-        JOIN catalog.parts p
-          ON p.id = c.part_id
-        JOIN reference.part_types pt
-          ON pt.id = p.part_type_id
-        WHERE UPPER(v.brand) = UPPER(%s)
-          AND UPPER(v.model) = UPPER(%s)
-          AND v.model_year = %s
+        SELECT DISTINCT *
+        FROM (
+
+            -- aplicações encontradas via motor do veículo
+            SELECT
+                v.id AS vehicle_id,
+                v.brand,
+                v.model,
+                v.model_year,
+                v.version,
+                v.body_type,
+                v.fuel_type,
+                p.id AS part_id,
+                p.name AS part_name,
+                p.status AS part_status,
+                pt.id AS part_type_id,
+                pt.name AS part_type_name,
+                c.id AS cluster_id,
+                a.id AS application_id,
+                a.position,
+                a.side,
+                a.notes,
+                a.source,
+                a.confidence_score
+            FROM reference.vehicles v
+            JOIN reference.vehicle_motors vm
+              ON vm.vehicle_id = v.id
+            JOIN catalog.applications a
+              ON a.motor_id = vm.motor_id
+            JOIN catalog.clusters c
+              ON c.id = a.cluster_id
+            JOIN catalog.parts p
+              ON p.id = c.part_id
+            JOIN reference.part_types pt
+              ON pt.id = p.part_type_id
+            WHERE UPPER(v.brand) = UPPER(%s)
+              AND UPPER(v.model) = UPPER(%s)
+              AND v.model_year = %s
+
+            UNION
+
+            -- aplicações cadastradas diretamente no veículo
+            SELECT
+                v.id AS vehicle_id,
+                v.brand,
+                v.model,
+                v.model_year,
+                v.version,
+                v.body_type,
+                v.fuel_type,
+                p.id AS part_id,
+                p.name AS part_name,
+                p.status AS part_status,
+                pt.id AS part_type_id,
+                pt.name AS part_type_name,
+                c.id AS cluster_id,
+                a.id AS application_id,
+                a.position,
+                a.side,
+                a.notes,
+                a.source,
+                a.confidence_score
+            FROM reference.vehicles v
+            JOIN catalog.applications a
+              ON a.vehicle_id = v.id
+            JOIN catalog.clusters c
+              ON c.id = a.cluster_id
+            JOIN catalog.parts p
+              ON p.id = c.part_id
+            JOIN reference.part_types pt
+              ON pt.id = p.part_type_id
+            WHERE UPPER(v.brand) = UPPER(%s)
+              AND UPPER(v.model) = UPPER(%s)
+              AND v.model_year = %s
+
+        ) fitment_result
+        WHERE 1 = 1
     """
 
-    params: list[Any] = [brand, model, model_year]
+    # os filtros base são repetidos duas vezes por causa do UNION
+    params: list[Any] = [brand, model, model_year, brand, model, model_year]
 
+    # filtra versão somente quando informada
     if version is not None:
-        query += " AND UPPER(COALESCE(v.version, '')) = UPPER(%s)"
+        query += " AND UPPER(COALESCE(version, '')) = UPPER(%s)"
         params.append(version)
 
+    # filtra nome do tipo de peça somente quando informado
     if part_type_name is not None:
-        query += " AND UPPER(pt.name) = UPPER(%s)"
+        query += " AND UPPER(part_type_name) = UPPER(%s)"
         params.append(part_type_name)
 
+    # por enquanto consideramos "active" como equivalente a publicado
     if only_published:
-        query += " AND p.status = 'active'"
+        query += " AND part_status = 'active'"
 
     query += """
         ORDER BY
-            pt.name,
-            p.name,
-            a.confidence_score DESC
+            part_type_name,
+            part_name,
+            confidence_score DESC
     """
 
     cursor.execute(query, tuple(params))
-    rows = cursor.fetchall()
-
-    columns = [desc[0] for desc in cursor.description]
-    return [dict(zip(columns, row)) for row in rows]
+    return _rows_to_dicts(cursor)
