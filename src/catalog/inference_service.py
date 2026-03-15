@@ -15,5 +15,5 @@ Exemplos de responsabilidades futuras:
 - aprovar ou rejeitar inferências
 
 Status atual:
-- arquivo reservado para implementação futura
+- reservado para implementação futura
 """

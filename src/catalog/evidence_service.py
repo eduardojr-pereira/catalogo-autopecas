@@ -15,5 +15,5 @@ Exemplos de responsabilidades futuras:
 - apoiar revisão humana de decisões do catálogo
 
 Status atual:
-- arquivo reservado para implementação futura
+- reservado para implementação futura
 """

@@ -16,5 +16,5 @@ Exemplos de responsabilidades futuras:
 - promover cluster discovery para consolidado
 
 Status atual:
-- arquivo reservado para implementação futura
+- reservado para implementação futura
 """

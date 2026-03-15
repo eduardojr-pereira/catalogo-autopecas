@@ -15,5 +15,5 @@ Exemplos de utilitários futuros:
 - funções auxiliares de formatação
 
 Status atual:
-- arquivo reservado para implementação futura
+- reservado para implementação futura
 """

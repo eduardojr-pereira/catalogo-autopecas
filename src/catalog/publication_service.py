@@ -16,5 +16,5 @@ Exemplos de responsabilidades futuras:
 - controlar status como draft, review e published
 
 Status atual:
-- arquivo reservado para implementação futura
+- reservado para implementação futura
 """

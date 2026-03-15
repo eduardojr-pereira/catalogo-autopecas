@@ -15,5 +15,5 @@ Exemplos de endpoints futuros:
 - GET /fitment/vehicle/{vehicle_id}
 
 Status atual:
-- arquivo reservado para implementação futura
+- reservado para implementação futura
 """

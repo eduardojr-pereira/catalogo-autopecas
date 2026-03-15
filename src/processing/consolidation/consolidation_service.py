@@ -15,5 +15,5 @@ Exemplos de responsabilidades futuras:
 - bloquear relações rejeitadas ou fracas
 
 Status atual:
-- arquivo reservado para implementação futura
+- reservado para implementação futura
 """

@@ -14,5 +14,5 @@ Exemplos de uso futuro:
 - reaproveitar configuração em scripts, testes e API
 
 Status atual:
-- arquivo reservado para implementação futura
+- reservado para implementação futura
 """

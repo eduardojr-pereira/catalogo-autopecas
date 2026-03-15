@@ -16,5 +16,5 @@ Exemplos de critérios futuros:
 - recorrência em múltiplas fontes
 
 Status atual:
-- arquivo reservado para implementação futura
+- reservado para implementação futura
 """
