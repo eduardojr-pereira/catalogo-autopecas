@@ -1,20 +1,33 @@
-# Regra de ouro do modelo
+# Regra de Ouro do Catálogo
 
-**Nunca trate equivalência como verdade absoluta sem contexto.**
+## Regra principal
 
-Exemplo:
-* um site pode dizer que o código A equivale ao B
-* outro pode dizer que A equivale a C
-* isso não significa automaticamente que todos são 100% intercambiáveis em qualquer aplicação
+**Equivalência descoberta não implica identidade técnica absoluta.**
 
----
+No domínio automotivo, duas peças podem aparecer como equivalentes e ainda assim apresentarem diferenças em:
 
-Por isso, o ideal é pensar assim:
-* o código descoberto entra em discovery.codes
-* a equivalência descoberta entra em discovery.code_equivalences
-* o cluster consolidado entra em catalog.clusters
-* a aplicação validada entra em catalog.applications
+- dimensões
+- rosca
+- altura
+- lado
+- posição
+- pressão
+- encaixe
+- revisão de aplicação
 
-Ou seja:
+## Consequência prática
 
-**descoberta e catálogo consolidado continuam separados.**
+Toda equivalência descoberta deve ser tratada inicialmente como:
+
+- uma relação informativa
+- uma hipótese de agrupamento
+- uma entrada para análise posterior
+
+e não como garantia imediata de fusão técnica definitiva.
+
+## Regra operacional
+
+- relações descobertas → alimentam `discovery.code_equivalences`
+- clusters de descoberta → servem para exploração e expansão
+- relações validadas → podem alimentar clusters consolidados
+- aplicações confiáveis → devem ficar ligadas a clusters consolidados

@@ -2,379 +2,131 @@
 
 ## 1. Visão Geral
 
-Este projeto implementa um **catálogo automotivo técnico baseado em clusters de peças e rede de equivalência entre códigos**.
+Este projeto implementa um catálogo automotivo técnico baseado em:
 
-O objetivo é permitir:
+- códigos de peças
+- rede de equivalência entre códigos
+- clusters de peças
+- aplicações em motores e veículos
 
-* identificar peças compatíveis com veículos
-* mapear códigos OEM e aftermarket
-* relacionar equivalentes entre fabricantes
-* escalar o catálogo automaticamente a partir de novas fontes de dados
+O sistema distingue claramente:
 
-A arquitetura foi projetada para suportar **expansão automática do catálogo**, evitando dependência exclusiva de OEM ou cadastro manual de aplicações.
+- **equivalência descoberta**
+- **equivalência validada**
+- **agrupamento de descoberta**
+- **agrupamento consolidado**
 
----
-
-# 2. Conceito Central do Modelo
-
-O núcleo do sistema é o **Cluster de Peça**.
-
-Um cluster representa **uma peça funcional única**, independentemente do fabricante ou código utilizado.
-
-Exemplo conceitual:
-
-Cluster: Filtro de óleo motor Honda R18
-
-Códigos pertencentes ao cluster:
-
-Honda 15400-RTA-003
-Bosch 0986AF0051
-Mahle OC1196
-Fram PH7317
-Mann W610/3
-
-Todos esses códigos representam **a mesma peça funcional**.
+Isso é necessário porque, no domínio automotivo, duas peças podem aparecer como equivalentes em uma fonte comercial sem serem tecnicamente idênticas em todas as dimensões ou aplicações.
 
 ---
 
-# 3. Rede de Equivalência de Códigos
+## 2. Conceito Central
 
-O sistema utiliza uma **rede de equivalência** para descobrir automaticamente quais códigos pertencem ao mesmo cluster.
+O sistema possui duas camadas de agrupamento:
 
-Cada código é tratado como um **nó em um grafo**.
+### Cluster de Descoberta
+Grupo de códigos conectados por equivalências descobertas.
 
-As relações de equivalência formam **arestas entre os códigos**.
+Objetivo:
+- explorar relações
+- expandir o catálogo
+- organizar hipóteses de equivalência
 
-Exemplo:
+### Cluster Consolidado
+Grupo de códigos já validados com confiança técnica suficiente.
 
-Bosch 0986AF0051 ↔ Mahle OC1196
-Mahle OC1196 ↔ Fram PH7317
-Fram PH7317 ↔ Honda 15400-RTA-003
-
-Todos os códigos conectados pertencem ao **mesmo cluster de peça**.
-
-Clusters são formados automaticamente a partir dos **componentes conectados da rede de equivalências**.
-
----
-
-# 4. Estrutura Conceitual do Catálogo
-
-A estrutura principal do catálogo é:
-
-CLUSTER_DE_PECA
-│
-├── CODIGOS_DE_PECA
-│      └ FABRICANTES
-│
-└── APLICACOES
-│
-└ MOTORES
-│
-└ VEICULOS
-
-Aplicações são associadas ao **cluster**, não aos códigos individuais.
-
-Isso garante que todos os códigos equivalentes compartilhem as mesmas aplicações.
+Objetivo:
+- suportar consulta confiável
+- servir como base principal do catálogo
+- reduzir risco de equivalências incorretas
 
 ---
 
-# 5. Entidades Principais
+## 3. Entidades Principais
 
-## Montadoras
+### Reference Schema
 
-Representa fabricantes de veículos.
+#### manufacturers
+Fabricantes de peças.
 
-Exemplos:
+#### vehicles
+Veículos.
 
-Honda
-Volkswagen
-Fiat
-Toyota
+#### motors
+Motores.
 
-Essa entidade evita repetição de nomes de fabricantes em registros de veículos.
-
----
-
-## Veículos
-
-Representa modelos de veículos.
-
-Exemplos:
-
-Honda Civic
-Volkswagen Golf
-Fiat Palio
-Toyota Corolla
-
-Informações comuns:
-
-* montadora
-* modelo
-* geração
-* ano de início
-* ano de fim
+#### vehicle_motors
+Relacionamento entre veículos e motores.
 
 ---
 
-## Motores
+### Discovery Schema
 
-Define versões de motorização associadas aos veículos.
+#### codes
+Todos os códigos de peças encontrados pelo sistema.
 
-Exemplos:
+Campos relevantes:
+- fabricante
+- código bruto
+- código normalizado
 
-R18
-EA111
-Fire 1.4
-TSI 1.4
+#### code_equivalences
+Relações de equivalência descobertas entre códigos.
 
-Informações típicas:
+Importante:
+esta tabela não representa, por si só, identidade técnica absoluta.
 
-* código do motor
-* cilindrada
-* combustível
-* potência
-
----
-
-## Veículo_Motor
-
-Tabela que relaciona veículos e motores.
-
-Um veículo pode possuir **várias motorizações**.
-
-Exemplo:
-
-Civic → Motor R18
-Civic → Motor K20
-Golf → Motor TSI
-Golf → Motor MSI
+Campos relevantes:
+- source
+- equivalence_type
+- validation_status
+- confidence_score
+- notes
 
 ---
 
-## Sistemas Automotivos
+### Catalog Schema
 
-Organiza peças por sistemas do veículo.
+#### clusters
+Clusters de peças.
 
-Exemplos:
+Campos relevantes:
+- cluster_type (`discovery` ou `consolidated`)
 
-Lubrificação
-Freios
-Suspensão
-Arrefecimento
-Ignição
-Transmissão
-Elétrica
+#### cluster_codes
+Relacionamento entre clusters e códigos.
 
----
-
-## Peças
-
-Define o tipo genérico de peça.
-
-Exemplos:
-
-Filtro de óleo
-Filtro de ar
-Pastilha de freio
-Disco de freio
-Vela de ignição
-
-Cada peça pertence a um sistema automotivo.
+#### applications
+Relacionamento entre cluster e motor.
 
 ---
 
-## Sinônimos de Peças
+## 4. Regra de Negócio Essencial
 
-Permite mapear diferentes nomes usados para a mesma peça.
+Nem toda equivalência descoberta deve gerar fusão automática de cluster consolidado.
 
-Exemplo:
+Exemplos de risco:
+- diferenças dimensionais
+- roscas diferentes
+- revisões de peça
+- pequenas variações aceitas por alguns marketplaces, mas não por catálogos técnicos rigorosos
 
-Filtro de óleo
-Filtro óleo
-Filtro lubrificante
-Oil filter
-
-Todos apontam para uma **peça padronizada**.
-
-Isso melhora significativamente a busca no catálogo.
-
----
-
-# 6. Cluster de Peça
-
-Representa um grupo de códigos equivalentes que descrevem a mesma peça funcional.
-
-Cada cluster pode possuir:
-
-* múltiplos códigos OEM
-* múltiplos códigos aftermarket
-* múltiplos fabricantes
-
-Aplicações são associadas ao cluster.
+Portanto:
+- relações descobertas alimentam clusters de descoberta
+- relações validadas podem alimentar clusters consolidados
 
 ---
 
-# 7. Códigos de Peça
-
-Representa qualquer código de peça existente no mercado.
-
-Tipos comuns:
-
-OEM
-Aftermarket
-Código interno
-Código de e-commerce
-
-Cada código está associado a:
-
-* um fabricante
-* um cluster de peça
-
----
-
-# 8. Fabricantes
-
-Representa fabricantes de peças automotivas.
-
-Exemplos:
-
-Bosch
-Mahle
-NGK
-SKF
-Gates
-TRW
-
-Fabricantes produzem códigos aftermarket e podem fornecer equivalências.
-
----
-
-# 9. Equivalência de Códigos
-
-Representa relações de equivalência entre dois códigos.
-
-Exemplo:
-
-Bosch 0986AF0051 ↔ Mahle OC1196
-
-Tipos possíveis de equivalência:
-
-OEM equivalence
-Aftermarket equivalence
-Cross reference
-Substituição
-
-Essas relações formam a **rede de equivalência utilizada para gerar clusters automaticamente**.
-
----
-
-# 10. Aplicações
-
-Define em quais motores um determinado cluster pode ser utilizado.
-
-Exemplo:
-
-Cluster: Filtro de óleo motor R18
-
-Aplicações:
-
-Motor R18 → Civic 2008
-Motor R18 → Civic 2009
-Motor R18 → Civic 2010
-
-Todos os códigos do cluster herdam essas aplicações.
-
----
-
-# 11. Estrutura Geral do Banco (Conceitual)
-
-Entidades principais do sistema:
-
-Montadoras
-Veículos
-Motores
-Veículo_Motor
-
-Sistemas
-Peças
-Sinônimos de Peças
-
-Clusters de Peça
-Códigos de Peça
-Fabricantes
-
-Equivalência de Códigos
-
-Aplicações
-
----
-
-# 12. Camadas do Sistema
-
-O sistema possui duas camadas principais.
-
-## Discovery Engine
-
-Responsável por descobrir novos códigos e equivalências a partir de:
-
-* veículos
-* nomes de peças
-* catálogos de fabricantes
-* lojas de autopeças
-
-Entrada típica:
-
-veículo + peça
-
-Saída:
-
-códigos encontrados e possíveis equivalências.
-
----
-
-## Catalog Engine
-
-Responsável por manter a estrutura do catálogo.
-
-Funções principais:
-
-* gerenciar clusters de peças
-* manter rede de equivalência de códigos
-* associar aplicações aos clusters
-* garantir integridade das relações.
-
----
-
-# 13. Expansão Automática do Catálogo
-
-O catálogo cresce automaticamente à medida que novas equivalências são descobertas.
-
-Fluxo de expansão:
-
-novo código encontrado
-↓
-descoberta de equivalentes
-↓
-formação ou expansão de cluster
-↓
-novas aplicações associadas
-↓
-expansão do catálogo
-
-Esse modelo permite que o catálogo cresça **exponencialmente conforme novos dados são coletados**.
-
----
-
-# 14. Objetivo do Modelo
-
-Permitir responder perguntas como:
-
-Qual peça serve para este veículo?
-
-Quais equivalentes existem para este código?
-
-Em quais veículos um determinado código pode ser aplicado?
-
-Qual o OEM correspondente a um código aftermarket?
-
-Quais fabricantes produzem peças equivalentes para determinada aplicação?
+## 5. Fluxo Conceitual
+
+Código descoberto  
+↓  
+Equivalência descoberta  
+↓  
+Cluster de descoberta  
+↓  
+Validação técnica / aumento de confiança  
+↓  
+Cluster consolidado  
+↓  
+Aplicações confiáveis
