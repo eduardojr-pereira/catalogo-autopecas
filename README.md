@@ -103,21 +103,43 @@ Banco de dados do catálogo
 ```
 catalogo_autopecas
 │
+├── data                      # Arquivos de dados locais
+│   ├── raw
+│   └── processed
+│
 ├── database
 │   └── schema.sql            # Estrutura do banco PostgreSQL
 │
 ├── docker
 │   └── docker-compose.yml    # Infraestrutura do banco com Docker
 │
-├── docs                      # Documentação do projeto
-│
 ├── scripts                   # Scripts auxiliares
 │
+├── docs                      # Documentação do projeto
+│   ├── arquitetura.md
+│   ├── docker.md
+│   ├── modelo_dados.md
+│   ├── pipeline_dados.md
+│   └── regra_ouro.md
+│
 ├── src                       # Código principal do sistema
+│   ├── catalog
+│   │   └── catalog_service.py
+│   │
+│   ├── clustering
+│   │   └── cluster_engine.py
+│   │
+│   ├── discovery
+│   │   ├── collectors
+│   │   └── scrappers
+│   │
+│   ├── processing
+│   │   ├── equivalence
+│   │   └── normalization
 │
-├── tests                     # Testes
-│
-├── data                      # Arquivos de dados locais
+├── tests                      # Testes
+│   ├── conftest.py
+│   └── test_database.py
 │
 ├── venv                      # Ambiente virtual Python
 │
