@@ -1,12 +1,22 @@
 """
 test_database.py
 
-Testes de integração do schema refatorado do catálogo automotivo.
-Cobre as principais tabelas dos schemas:
+Testes de integração do schema do catálogo automotivo.
 
+Este arquivo valida as principais estruturas do banco, cobrindo:
 - reference
 - discovery
 - catalog
+- compatibility
+- publication
+
+Observação importante:
+A modelagem de veículos foi refatorada para usar a estrutura:
+
+vehicle_brands -> vehicle_models -> vehicles
+
+Por isso os testes agora inserem marcas e modelos explicitamente
+antes de criar registros em reference.vehicles.
 """
 
 
@@ -15,7 +25,7 @@ Cobre as principais tabelas dos schemas:
 # ------------------------------------------------------
 def insert_manufacturer(db_cursor, name, manufacturer_type="unknown"):
     """
-    Insere um fabricante e retorna o id criado.
+    Insere um fabricante de peça e retorna o id criado.
     """
     db_cursor.execute("""
         INSERT INTO reference.manufacturers (
@@ -46,9 +56,44 @@ def insert_part_type(db_cursor, name, normalized_name, description=None):
     return db_cursor.fetchone()[0]
 
 
+def insert_vehicle_brand(db_cursor, name, normalized_name, fipe_brand_code=None):
+    """
+    Insere uma marca de veículo e retorna o id criado.
+    """
+    db_cursor.execute("""
+        INSERT INTO reference.vehicle_brands (
+            name,
+            normalized_name,
+            fipe_brand_code
+        )
+        VALUES (%s, %s, %s)
+        RETURNING id
+    """, (name, normalized_name, fipe_brand_code))
+
+    return db_cursor.fetchone()[0]
+
+
+def insert_vehicle_model(db_cursor, brand_id, name, normalized_name, fipe_model_code=None):
+    """
+    Insere um modelo de veículo e retorna o id criado.
+    """
+    db_cursor.execute("""
+        INSERT INTO reference.vehicle_models (
+            brand_id,
+            name,
+            normalized_name,
+            fipe_model_code
+        )
+        VALUES (%s, %s, %s, %s)
+        RETURNING id
+    """, (brand_id, name, normalized_name, fipe_model_code))
+
+    return db_cursor.fetchone()[0]
+
+
 def insert_part(db_cursor, name, normalized_name, part_type_id, description=None, status="active"):
     """
-    Insere uma peça consolidada e retorna o id criado.
+    Insere uma peça consolidada no catálogo e retorna o id criado.
     """
     db_cursor.execute("""
         INSERT INTO catalog.parts (
@@ -88,6 +133,7 @@ def insert_motor(
     description,
     displacement=None,
     fuel_type=None,
+    fuel_type_id=None,
     aspiration=None,
     valve_count=None,
     power_hp=None,
@@ -102,18 +148,20 @@ def insert_motor(
             description,
             displacement,
             fuel_type,
+            fuel_type_id,
             aspiration,
             valve_count,
             power_hp,
             engine_family
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         RETURNING id
     """, (
         code,
         description,
         displacement,
         fuel_type,
+        fuel_type_id,
         aspiration,
         valve_count,
         power_hp,
@@ -125,37 +173,54 @@ def insert_motor(
 
 def insert_vehicle(
     db_cursor,
-    brand,
-    model,
+    model_id,
     model_year,
     version=None,
+    brand_text=None,
+    model_text=None,
     body_type=None,
+    body_type_id=None,
     fuel_type=None,
-    market="BR"
+    fuel_type_id=None,
+    market="BR",
+    fipe_vehicle_code=None
 ):
     """
     Insere um veículo e retorna o id criado.
+
+    Observação:
+    - model_id é a nova referência oficial
+    - brand_text e model_text são mantidos temporariamente
+      para compatibilidade e transição gradual
     """
     db_cursor.execute("""
         INSERT INTO reference.vehicles (
-            brand,
-            model,
+            model_id,
+            brand_text,
+            model_text,
             model_year,
             version,
             body_type,
+            body_type_id,
             fuel_type,
-            market
+            fuel_type_id,
+            market,
+            fipe_vehicle_code
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         RETURNING id
     """, (
-        brand,
-        model,
+        model_id,
+        brand_text,
+        model_text,
         model_year,
         version,
         body_type,
+        body_type_id,
         fuel_type,
-        market
+        fuel_type_id,
+        market,
+        fipe_vehicle_code
     ))
 
     return db_cursor.fetchone()[0]
@@ -268,6 +333,44 @@ def test_insert_part_type_alias(db_cursor):
 
 # ------------------------------------------------------
 # TESTE 4
+# Inserção de marca de veículo
+# ------------------------------------------------------
+def test_insert_vehicle_brand(db_cursor):
+    brand_id = insert_vehicle_brand(
+        db_cursor,
+        "Honda",
+        "HONDA",
+        "25"
+    )
+
+    assert brand_id is not None
+
+
+# ------------------------------------------------------
+# TESTE 5
+# Inserção de modelo de veículo
+# ------------------------------------------------------
+def test_insert_vehicle_model(db_cursor):
+    brand_id = insert_vehicle_brand(
+        db_cursor,
+        "Honda",
+        "HONDA",
+        "25"
+    )
+
+    model_id = insert_vehicle_model(
+        db_cursor,
+        brand_id,
+        "Civic",
+        "CIVIC",
+        "4828"
+    )
+
+    assert model_id is not None
+
+
+# ------------------------------------------------------
+# TESTE 6
 # Inserção de motor com atributos técnicos
 # ------------------------------------------------------
 def test_insert_motor(db_cursor):
@@ -287,29 +390,74 @@ def test_insert_motor(db_cursor):
 
 
 # ------------------------------------------------------
-# TESTE 5
-# Inserção de veículo enriquecido
+# TESTE 7
+# Inserção de veículo com novo modelo brand->model->vehicle
 # ------------------------------------------------------
 def test_insert_vehicle(db_cursor):
+    brand_id = insert_vehicle_brand(
+        db_cursor,
+        "Honda",
+        "HONDA",
+        "25"
+    )
+
+    model_id = insert_vehicle_model(
+        db_cursor,
+        brand_id,
+        "Civic",
+        "CIVIC",
+        "4828"
+    )
+
     vehicle_id = insert_vehicle(
         db_cursor,
-        brand="Honda",
-        model="Civic",
+        model_id=model_id,
+        brand_text="Honda",
+        model_text="Civic",
         model_year=2010,
         version="LXS",
         body_type="sedan",
         fuel_type="gasoline",
-        market="BR"
+        market="BR",
+        fipe_vehicle_code="2010-1"
     )
 
     assert vehicle_id is not None
 
 
 # ------------------------------------------------------
-# TESTE 6
+# TESTE 8
 # Relação entre veículo e motor
 # ------------------------------------------------------
 def test_vehicle_motor_relationship(db_cursor):
+    # cria a estrutura marca -> modelo -> veículo
+    brand_id = insert_vehicle_brand(
+        db_cursor,
+        "Honda",
+        "HONDA",
+        "25"
+    )
+
+    model_id = insert_vehicle_model(
+        db_cursor,
+        brand_id,
+        "Civic",
+        "CIVIC",
+        "4828"
+    )
+
+    vehicle_id = insert_vehicle(
+        db_cursor,
+        model_id=model_id,
+        brand_text="Honda",
+        model_text="Civic",
+        model_year=2011,
+        version="LXL",
+        body_type="sedan",
+        fuel_type="gasoline",
+        market="BR"
+    )
+
     motor_id = insert_motor(
         db_cursor,
         code="R18_REL_TEST",
@@ -317,17 +465,6 @@ def test_vehicle_motor_relationship(db_cursor):
         displacement=1.8,
         fuel_type="gasoline",
         aspiration="natural"
-    )
-
-    vehicle_id = insert_vehicle(
-        db_cursor,
-        brand="Honda",
-        model="Civic",
-        model_year=2011,
-        version="LXL",
-        body_type="sedan",
-        fuel_type="gasoline",
-        market="BR"
     )
 
     db_cursor.execute("""
@@ -347,7 +484,7 @@ def test_vehicle_motor_relationship(db_cursor):
 
 
 # ------------------------------------------------------
-# TESTE 7
+# TESTE 9
 # Inserção de fonte de descoberta
 # ------------------------------------------------------
 def test_insert_source(db_cursor):
@@ -363,7 +500,7 @@ def test_insert_source(db_cursor):
 
 
 # ------------------------------------------------------
-# TESTE 8
+# TESTE 10
 # Inserção de código de peça
 # ------------------------------------------------------
 def test_insert_code(db_cursor):
@@ -384,7 +521,7 @@ def test_insert_code(db_cursor):
 
 
 # ------------------------------------------------------
-# TESTE 9
+# TESTE 11
 # Inserção de evidência de código
 # ------------------------------------------------------
 def test_insert_code_evidence(db_cursor):
@@ -430,7 +567,7 @@ def test_insert_code_evidence(db_cursor):
 
 
 # ------------------------------------------------------
-# TESTE 10
+# TESTE 12
 # Inserção de equivalência entre códigos
 # ------------------------------------------------------
 def test_insert_code_equivalence(db_cursor):
@@ -487,7 +624,7 @@ def test_insert_code_equivalence(db_cursor):
 
 
 # ------------------------------------------------------
-# TESTE 11
+# TESTE 13
 # Inserção de peça consolidada
 # ------------------------------------------------------
 def test_insert_part(db_cursor):
@@ -510,7 +647,7 @@ def test_insert_part(db_cursor):
 
 
 # ------------------------------------------------------
-# TESTE 12
+# TESTE 14
 # Inserção de atributo técnico da peça
 # ------------------------------------------------------
 def test_insert_part_attribute(db_cursor):
@@ -551,7 +688,7 @@ def test_insert_part_attribute(db_cursor):
 
 
 # ------------------------------------------------------
-# TESTE 13
+# TESTE 15
 # Inserção de cluster discovery
 # ------------------------------------------------------
 def test_insert_discovery_cluster(db_cursor):
@@ -565,7 +702,7 @@ def test_insert_discovery_cluster(db_cursor):
 
 
 # ------------------------------------------------------
-# TESTE 14
+# TESTE 16
 # Inserção de cluster consolidated vinculado à peça
 # ------------------------------------------------------
 def test_insert_consolidated_cluster_linked_to_part(db_cursor):
@@ -593,7 +730,7 @@ def test_insert_consolidated_cluster_linked_to_part(db_cursor):
 
 
 # ------------------------------------------------------
-# TESTE 15
+# TESTE 17
 # Ligação entre cluster e código
 # ------------------------------------------------------
 def test_link_code_to_cluster(db_cursor):
@@ -633,7 +770,7 @@ def test_link_code_to_cluster(db_cursor):
 
 
 # ------------------------------------------------------
-# TESTE 16
+# TESTE 18
 # Aplicação por motor
 # ------------------------------------------------------
 def test_insert_application_by_motor(db_cursor):
@@ -679,14 +816,30 @@ def test_insert_application_by_motor(db_cursor):
 
 
 # ------------------------------------------------------
-# TESTE 17
+# TESTE 19
 # Aplicação por veículo
 # ------------------------------------------------------
 def test_insert_application_by_vehicle(db_cursor):
+    brand_id = insert_vehicle_brand(
+        db_cursor,
+        "Honda",
+        "HONDA",
+        "25"
+    )
+
+    model_id = insert_vehicle_model(
+        db_cursor,
+        brand_id,
+        "Civic",
+        "CIVIC",
+        "4828"
+    )
+
     vehicle_id = insert_vehicle(
         db_cursor,
-        brand="Honda",
-        model="Civic",
+        model_id=model_id,
+        brand_text="Honda",
+        model_text="Civic",
         model_year=2010,
         version="LXS",
         body_type="sedan",
@@ -724,10 +877,37 @@ def test_insert_application_by_vehicle(db_cursor):
 
 
 # ------------------------------------------------------
-# TESTE 18
+# TESTE 20
 # Aplicação por veículo e motor
 # ------------------------------------------------------
 def test_insert_application_with_vehicle_and_motor(db_cursor):
+    brand_id = insert_vehicle_brand(
+        db_cursor,
+        "Honda",
+        "HONDA",
+        "25"
+    )
+
+    model_id = insert_vehicle_model(
+        db_cursor,
+        brand_id,
+        "Civic",
+        "CIVIC",
+        "4828"
+    )
+
+    vehicle_id = insert_vehicle(
+        db_cursor,
+        model_id=model_id,
+        brand_text="Honda",
+        model_text="Civic",
+        model_year=2010,
+        version="LXS",
+        body_type="sedan",
+        fuel_type="gasoline",
+        market="BR"
+    )
+
     motor_id = insert_motor(
         db_cursor,
         code="R18A1_APP_TEST",
@@ -735,17 +915,6 @@ def test_insert_application_with_vehicle_and_motor(db_cursor):
         displacement=1.8,
         fuel_type="gasoline",
         aspiration="natural"
-    )
-
-    vehicle_id = insert_vehicle(
-        db_cursor,
-        brand="Honda",
-        model="Civic",
-        model_year=2010,
-        version="LXS",
-        body_type="sedan",
-        fuel_type="gasoline",
-        market="BR"
     )
 
     cluster_id = insert_cluster(
@@ -784,7 +953,7 @@ def test_insert_application_with_vehicle_and_motor(db_cursor):
 
 
 # ------------------------------------------------------
-# TESTE 19
+# TESTE 21
 # Vincular peça a cluster via update
 # ------------------------------------------------------
 def test_link_part_to_existing_cluster(db_cursor):
@@ -821,7 +990,7 @@ def test_link_part_to_existing_cluster(db_cursor):
 
 
 # ------------------------------------------------------
-# TESTE 20
+# TESTE 22
 # Fabricante OEM
 # ------------------------------------------------------
 def test_insert_oem_manufacturer(db_cursor):
@@ -832,3 +1001,395 @@ def test_insert_oem_manufacturer(db_cursor):
     )
 
     assert manufacturer_id is not None
+
+
+# ------------------------------------------------------
+# TESTE 23
+# Inserção de regra de compatibilidade
+# ------------------------------------------------------
+def test_insert_compatibility_rule(db_cursor):
+    db_cursor.execute("""
+        INSERT INTO compatibility.rules (
+            name,
+            description,
+            rule_type,
+            rule_expression,
+            priority,
+            is_active
+        )
+        VALUES (%s, %s, %s, %s::jsonb, %s, %s)
+        RETURNING id
+    """, (
+        "Regra por motor",
+        "Valida compatibilidade por motor",
+        "motor_match",
+        '{"field": "motor_id", "operator": "equals"}',
+        100,
+        True
+    ))
+
+    rule_id = db_cursor.fetchone()[0]
+
+    assert rule_id is not None
+
+
+# ------------------------------------------------------
+# TESTE 24
+# Inserção de evidência de compatibilidade
+# ------------------------------------------------------
+def test_insert_compatibility_evidence(db_cursor):
+    brand_id = insert_vehicle_brand(
+        db_cursor,
+        "Honda",
+        "HONDA",
+        "25"
+    )
+
+    model_id = insert_vehicle_model(
+        db_cursor,
+        brand_id,
+        "Civic",
+        "CIVIC",
+        "4828"
+    )
+
+    vehicle_id = insert_vehicle(
+        db_cursor,
+        model_id=model_id,
+        brand_text="Honda",
+        model_text="Civic",
+        model_year=2012
+    )
+
+    cluster_id = insert_cluster(
+        db_cursor,
+        name="Cluster compat evidence",
+        cluster_type="consolidated"
+    )
+
+    application_id = insert_application_for_test(
+        db_cursor,
+        cluster_id=cluster_id,
+        vehicle_id=vehicle_id
+    )
+
+    db_cursor.execute("""
+        INSERT INTO compatibility.evidence (
+            application_id,
+            source,
+            evidence_type,
+            evidence_data,
+            confidence_score
+        )
+        VALUES (%s, %s, %s, %s::jsonb, %s)
+        RETURNING id
+    """, (
+        application_id,
+        "pytest",
+        "catalog_match",
+        '{"source": "manual", "match": true}',
+        0.920
+    ))
+
+    evidence_id = db_cursor.fetchone()[0]
+
+    assert evidence_id is not None
+
+
+# ------------------------------------------------------
+# TESTE 25
+# Inserção de decisão de compatibilidade
+# ------------------------------------------------------
+def test_insert_compatibility_decision(db_cursor):
+    brand_id = insert_vehicle_brand(
+        db_cursor,
+        "Toyota",
+        "TOYOTA",
+        "39"
+    )
+
+    model_id = insert_vehicle_model(
+        db_cursor,
+        brand_id,
+        "Corolla",
+        "COROLLA",
+        "5214"
+    )
+
+    vehicle_id = insert_vehicle(
+        db_cursor,
+        model_id=model_id,
+        brand_text="Toyota",
+        model_text="Corolla",
+        model_year=2015
+    )
+
+    cluster_id = insert_cluster(
+        db_cursor,
+        name="Cluster compat decision",
+        cluster_type="consolidated"
+    )
+
+    application_id = insert_application_for_test(
+        db_cursor,
+        cluster_id=cluster_id,
+        vehicle_id=vehicle_id
+    )
+
+    db_cursor.execute("""
+        INSERT INTO compatibility.rules (
+            name,
+            description,
+            rule_type,
+            rule_expression
+        )
+        VALUES (%s, %s, %s, %s::jsonb)
+        RETURNING id
+    """, (
+        "Regra pytest decisão",
+        "Regra para teste de decisão",
+        "vehicle_match",
+        '{"field": "vehicle_id", "operator": "equals"}'
+    ))
+
+    rule_id = db_cursor.fetchone()[0]
+
+    db_cursor.execute("""
+        INSERT INTO compatibility.decisions (
+            application_id,
+            rule_id,
+            decision,
+            confidence_score,
+            notes
+        )
+        VALUES (%s, %s, %s, %s, %s)
+        RETURNING id
+    """, (
+        application_id,
+        rule_id,
+        "approved",
+        0.970,
+        "Decisão aprovada em teste"
+    ))
+
+    decision_id = db_cursor.fetchone()[0]
+
+    assert decision_id is not None
+
+
+# ------------------------------------------------------
+# TESTE 26
+# Inserção de batch de publicação
+# ------------------------------------------------------
+def test_insert_publication_batch(db_cursor):
+    db_cursor.execute("""
+        INSERT INTO publication.batches (
+            status,
+            notes
+        )
+        VALUES (%s, %s)
+        RETURNING id
+    """, (
+        "running",
+        "Batch iniciado em teste"
+    ))
+
+    batch_id = db_cursor.fetchone()[0]
+
+    assert batch_id is not None
+
+
+# ------------------------------------------------------
+# TESTE 27
+# Inserção de versão de catálogo
+# ------------------------------------------------------
+def test_insert_catalog_version(db_cursor):
+    db_cursor.execute("""
+        INSERT INTO publication.batches (
+            status,
+            notes
+        )
+        VALUES (%s, %s)
+        RETURNING id
+    """, (
+        "completed",
+        "Batch concluído em teste"
+    ))
+
+    batch_id = db_cursor.fetchone()[0]
+
+    db_cursor.execute("""
+        INSERT INTO publication.catalog_versions (
+            version_number,
+            batch_id,
+            notes
+        )
+        VALUES (%s, %s, %s)
+        RETURNING id
+    """, (
+        1,
+        batch_id,
+        "Primeira versão publicada em teste"
+    ))
+
+    version_id = db_cursor.fetchone()[0]
+
+    assert version_id is not None
+
+
+# ------------------------------------------------------
+# TESTE 28
+# Inserção de peça publicada
+# ------------------------------------------------------
+def test_insert_published_part(db_cursor):
+    part_type_id = insert_part_type(
+        db_cursor,
+        "Filtro de Combustível",
+        "FILTRO DE COMBUSTIVEL"
+    )
+
+    part_id = insert_part(
+        db_cursor,
+        name="Filtro de Combustível Test",
+        normalized_name="FILTRO DE COMBUSTIVEL TEST",
+        part_type_id=part_type_id
+    )
+
+    db_cursor.execute("""
+        INSERT INTO publication.batches (
+            status
+        )
+        VALUES (%s)
+        RETURNING id
+    """, ("completed",))
+
+    batch_id = db_cursor.fetchone()[0]
+
+    db_cursor.execute("""
+        INSERT INTO publication.catalog_versions (
+            version_number,
+            batch_id
+        )
+        VALUES (%s, %s)
+        RETURNING id
+    """, (1, batch_id))
+
+    version_id = db_cursor.fetchone()[0]
+
+    db_cursor.execute("""
+        INSERT INTO publication.published_parts (
+            catalog_version_id,
+            part_id
+        )
+        VALUES (%s, %s)
+        RETURNING id
+    """, (version_id, part_id))
+
+    published_part_id = db_cursor.fetchone()[0]
+
+    assert published_part_id is not None
+
+
+# ------------------------------------------------------
+# TESTE 29
+# Inserção de aplicação publicada
+# ------------------------------------------------------
+def test_insert_published_application(db_cursor):
+    brand_id = insert_vehicle_brand(
+        db_cursor,
+        "Honda",
+        "HONDA",
+        "25"
+    )
+
+    model_id = insert_vehicle_model(
+        db_cursor,
+        brand_id,
+        "Fit",
+        "FIT",
+        "3310"
+    )
+
+    vehicle_id = insert_vehicle(
+        db_cursor,
+        model_id=model_id,
+        brand_text="Honda",
+        model_text="Fit",
+        model_year=2014
+    )
+
+    cluster_id = insert_cluster(
+        db_cursor,
+        name="Cluster publicação aplicação",
+        cluster_type="consolidated"
+    )
+
+    application_id = insert_application_for_test(
+        db_cursor,
+        cluster_id=cluster_id,
+        vehicle_id=vehicle_id
+    )
+
+    db_cursor.execute("""
+        INSERT INTO publication.batches (
+            status
+        )
+        VALUES (%s)
+        RETURNING id
+    """, ("completed",))
+
+    batch_id = db_cursor.fetchone()[0]
+
+    db_cursor.execute("""
+        INSERT INTO publication.catalog_versions (
+            version_number,
+            batch_id
+        )
+        VALUES (%s, %s)
+        RETURNING id
+    """, (1, batch_id))
+
+    version_id = db_cursor.fetchone()[0]
+
+    db_cursor.execute("""
+        INSERT INTO publication.published_applications (
+            catalog_version_id,
+            application_id
+        )
+        VALUES (%s, %s)
+        RETURNING id
+    """, (version_id, application_id))
+
+    published_application_id = db_cursor.fetchone()[0]
+
+    assert published_application_id is not None
+
+
+# ------------------------------------------------------
+# FUNÇÃO AUXILIAR INTERNA
+# ------------------------------------------------------
+def insert_application_for_test(
+    db_cursor,
+    cluster_id,
+    motor_id=None,
+    vehicle_id=None,
+    confidence_score=0.900
+):
+    """
+    Função auxiliar usada pelos testes de compatibility e publication.
+
+    Ela encapsula a criação mínima de uma aplicação válida
+    no catálogo operacional.
+    """
+    db_cursor.execute("""
+        INSERT INTO catalog.applications (
+            cluster_id,
+            motor_id,
+            vehicle_id,
+            confidence_score
+        )
+        VALUES (%s, %s, %s, %s)
+        RETURNING id
+    """, (cluster_id, motor_id, vehicle_id, confidence_score))
+
+    return db_cursor.fetchone()[0]
