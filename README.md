@@ -126,20 +126,24 @@ catalogo_autopecas
 │   ├── catalog
 │   │   └── catalog_service.py
 │   │
-│   ├── clustering
-│   │   └── cluster_engine.py
-│   │
 │   ├── discovery
 │   │   ├── collectors
 │   │   └── scrappers
 │   │
-│   ├── processing
-│   │   ├── equivalence
-│   │   └── normalization
+│   └── processing
+│      ├── clustering
+│      │   └── equivalence_engine.py
+│      ├── equivalence
+│      └── normalization         
+│          ├── code_normalizer.py
+│          └── code_service.py
 │
 ├── tests                      # Testes
 │   ├── conftest.py
-│   └── test_database.py
+│   ├── test_code_service.py
+│   ├── test_database.py
+│   ├── test_equivalence_engine.py
+│   └── test_normalizer.py
 │
 ├── venv                      # Ambiente virtual Python
 │
