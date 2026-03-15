@@ -218,3 +218,12 @@ Agora que o Docker está funcionando, você poderá:
 * rodar aplicações isoladas
 
 No projeto deste repositório, o Docker será utilizado para iniciar um container com **PostgreSQL**, garantindo que o ambiente do banco seja **reproduzível em qualquer máquina**.
+
+
+'''
+docker compose down -v
+docker compose up -d
+docker ps
+Get-Content ../database/schema.sql | docker exec -i catalogo_postgres psql -U admin -d catalogo
+docker exec -it catalogo_postgres psql -U admin -d catalogo
+'''
