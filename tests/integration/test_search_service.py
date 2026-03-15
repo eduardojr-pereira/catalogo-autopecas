@@ -1,22 +1,33 @@
 """
 test_search_service.py
 
-Testes de integração dos serviços de busca.
+Testes de integração para o módulo search_service.
 
-Valida:
+Este arquivo valida:
 - busca por código
 - busca por nome da peça
 - busca por tipo de peça
 - busca por alias de tipo de peça
 - busca de equivalentes por código
+
+Os testes usam a estrutura atual do catálogo:
+
+discovery.codes
+catalog.clusters
+catalog.cluster_codes
+catalog.parts
+reference.part_types
+reference.part_type_aliases
+reference.manufacturers
 """
 
 import sys
 from pathlib import Path
 
+# permite importar módulos da pasta src
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
-from src.catalog.search_service import (  # noqa: E402
+from src.catalog.search_service import (
     search_by_code,
     search_by_part_name,
     search_by_part_type,
@@ -26,11 +37,12 @@ from src.catalog.search_service import (  # noqa: E402
 
 
 # ------------------------------------------------------
-# FUNÇÕES AUXILIARES
+# FUNÇÕES AUXILIARES DE CRIAÇÃO DE DADOS
 # ------------------------------------------------------
-def insert_manufacturer(db_cursor, name, manufacturer_type="aftermarket"):
+
+def create_manufacturer(db_cursor, name="Bosch", manufacturer_type="aftermarket"):
     """
-    Insere fabricante e retorna o id.
+    Cria um fabricante de peça.
     """
     db_cursor.execute("""
         INSERT INTO reference.manufacturers (
@@ -44,9 +56,9 @@ def insert_manufacturer(db_cursor, name, manufacturer_type="aftermarket"):
     return db_cursor.fetchone()[0]
 
 
-def insert_part_type(db_cursor, name, normalized_name):
+def create_part_type(db_cursor, name="Filtro de Óleo", normalized_name="FILTRO DE OLEO"):
     """
-    Insere tipo de peça e retorna o id.
+    Cria um tipo de peça.
     """
     db_cursor.execute("""
         INSERT INTO reference.part_types (
@@ -60,9 +72,9 @@ def insert_part_type(db_cursor, name, normalized_name):
     return db_cursor.fetchone()[0]
 
 
-def insert_part_type_alias(db_cursor, part_type_id, alias, normalized_alias):
+def create_part_type_alias(db_cursor, part_type_id, alias="Filtro Óleo", normalized_alias="FILTRO OLEO"):
     """
-    Insere alias de tipo de peça.
+    Cria um alias para um tipo de peça.
     """
     db_cursor.execute("""
         INSERT INTO reference.part_type_aliases (
@@ -74,9 +86,15 @@ def insert_part_type_alias(db_cursor, part_type_id, alias, normalized_alias):
     """, (part_type_id, alias, normalized_alias))
 
 
-def insert_part(db_cursor, name, normalized_name, part_type_id, status="active"):
+def create_part(
+    db_cursor,
+    part_type_id,
+    name="Filtro de Óleo Motor R18",
+    normalized_name="FILTRO DE OLEO MOTOR R18",
+    status="active"
+):
     """
-    Insere peça consolidada e retorna o id.
+    Cria uma peça consolidada.
     """
     db_cursor.execute("""
         INSERT INTO catalog.parts (
@@ -92,9 +110,9 @@ def insert_part(db_cursor, name, normalized_name, part_type_id, status="active")
     return db_cursor.fetchone()[0]
 
 
-def insert_cluster(db_cursor, part_id, name="Cluster Teste", cluster_type="consolidated"):
+def create_cluster(db_cursor, part_id, name="Cluster Filtro", cluster_type="consolidated"):
     """
-    Insere cluster e retorna o id.
+    Cria um cluster vinculado a uma peça.
     """
     db_cursor.execute("""
         INSERT INTO catalog.clusters (
@@ -109,9 +127,9 @@ def insert_cluster(db_cursor, part_id, name="Cluster Teste", cluster_type="conso
     return db_cursor.fetchone()[0]
 
 
-def insert_code(db_cursor, manufacturer_id, code, normalized_code):
+def create_code(db_cursor, manufacturer_id, code, normalized_code):
     """
-    Insere código e retorna o id.
+    Cria um código de peça.
     """
     db_cursor.execute("""
         INSERT INTO discovery.codes (
@@ -128,7 +146,7 @@ def insert_code(db_cursor, manufacturer_id, code, normalized_code):
 
 def link_code_to_cluster(db_cursor, cluster_id, code_id):
     """
-    Relaciona código ao cluster.
+    Relaciona um código a um cluster.
     """
     db_cursor.execute("""
         INSERT INTO catalog.cluster_codes (
@@ -143,155 +161,182 @@ def link_code_to_cluster(db_cursor, cluster_id, code_id):
 # TESTE 1
 # Busca por código
 # ------------------------------------------------------
+
 def test_search_by_code(db_cursor):
     """
-    Verifica se a busca por código retorna fabricante e peça.
+    Verifica se a busca por código retorna:
+    - código
+    - fabricante
+    - cluster
+    - peça
     """
-    manufacturer_id = insert_manufacturer(db_cursor, "Bosch Test")
-    part_type_id = insert_part_type(db_cursor, "Filtro de Óleo", "FILTRO DE OLEO")
-    part_id = insert_part(
+    manufacturer_id = create_manufacturer(
         db_cursor,
-        "Filtro Bosch Honda",
-        "FILTRO BOSCH HONDA",
-        part_type_id
+        name="Bosch Test",
+        manufacturer_type="aftermarket"
     )
-    cluster_id = insert_cluster(db_cursor, part_id)
 
-    code_id = insert_code(
+    part_type_id = create_part_type(db_cursor)
+    part_id = create_part(db_cursor, part_type_id)
+    cluster_id = create_cluster(db_cursor, part_id)
+
+    code_id = create_code(
         db_cursor,
         manufacturer_id,
-        "OC-1196",
-        "OC1196"
+        code="OC-1196",
+        normalized_code="OC1196"
     )
 
     link_code_to_cluster(db_cursor, cluster_id, code_id)
 
-    result = search_by_code(db_cursor, "oc-1196")
+    results = search_by_code(db_cursor, "oc-1196")
 
-    assert len(result) == 1
-    assert result[0]["manufacturer_name"] == "Bosch Test"
-    assert result[0]["part_id"] == part_id
-    assert result[0]["normalized_code"] == "OC1196"
+    assert len(results) == 1
+    assert results[0]["code_id"] == code_id
+    assert results[0]["manufacturer_name"] == "Bosch Test"
+    assert results[0]["cluster_id"] == cluster_id
+    assert results[0]["part_id"] == part_id
+    assert results[0]["part_name"] == "Filtro de Óleo Motor R18"
 
 
 # ------------------------------------------------------
 # TESTE 2
 # Busca por nome da peça
 # ------------------------------------------------------
+
 def test_search_by_part_name(db_cursor):
     """
     Verifica se a busca por nome retorna a peça correta.
     """
-    part_type_id = insert_part_type(db_cursor, "Filtro de Ar", "FILTRO DE AR")
-
-    part_id = insert_part(
+    part_type_id = create_part_type(db_cursor)
+    part_id = create_part(
         db_cursor,
-        "Filtro de Ar Civic",
-        "FILTRO DE AR CIVIC",
-        part_type_id
+        part_type_id,
+        name="Filtro de Ar do Motor",
+        normalized_name="FILTRO DE AR DO MOTOR"
     )
 
-    result = search_by_part_name(db_cursor, "filtro de ar")
+    results = search_by_part_name(db_cursor, "filtro de ar")
 
-    assert len(result) == 1
-    assert result[0]["part_id"] == part_id
-    assert result[0]["part_name"] == "Filtro de Ar Civic"
+    assert len(results) == 1
+    assert results[0]["part_id"] == part_id
+    assert results[0]["part_name"] == "Filtro de Ar do Motor"
 
 
 # ------------------------------------------------------
 # TESTE 3
 # Busca por tipo de peça
 # ------------------------------------------------------
+
 def test_search_by_part_type(db_cursor):
     """
-    Verifica se a busca por tipo de peça retorna itens daquele tipo.
+    Verifica se a busca por tipo de peça retorna peças desse tipo.
     """
-    part_type_id = insert_part_type(db_cursor, "Pastilha de Freio", "PASTILHA DE FREIO")
-
-    insert_part(
+    part_type_id = create_part_type(
         db_cursor,
-        "Pastilha Dianteira Civic",
-        "PASTILHA DIANTEIRA CIVIC",
-        part_type_id
+        name="Vela de Ignição",
+        normalized_name="VELA DE IGNICAO"
     )
 
-    result = search_by_part_type(db_cursor, "pastilha de freio")
+    part_id = create_part(
+        db_cursor,
+        part_type_id,
+        name="Vela NGK Civic",
+        normalized_name="VELA NGK CIVIC"
+    )
 
-    assert len(result) == 1
-    assert result[0]["part_type_name"] == "Pastilha de Freio"
+    results = search_by_part_type(db_cursor, "vela de ignição")
+
+    assert len(results) == 1
+    assert results[0]["part_id"] == part_id
+    assert results[0]["part_type_name"] == "Vela de Ignição"
 
 
 # ------------------------------------------------------
 # TESTE 4
-# Busca por alias do tipo de peça
+# Busca por alias de tipo de peça
 # ------------------------------------------------------
+
 def test_search_by_part_type_alias(db_cursor):
     """
-    Verifica se o alias resolve corretamente para as peças do tipo.
+    Verifica se a busca por alias resolve o tipo de peça corretamente.
     """
-    part_type_id = insert_part_type(db_cursor, "Vela de Ignição", "VELA DE IGNICAO")
+    part_type_id = create_part_type(
+        db_cursor,
+        name="Pastilha de Freio",
+        normalized_name="PASTILHA DE FREIO"
+    )
 
-    insert_part_type_alias(
+    create_part_type_alias(
         db_cursor,
         part_type_id,
-        "Vela",
-        "VELA"
+        alias="Pastilha",
+        normalized_alias="PASTILHA"
     )
 
-    part_id = insert_part(
+    part_id = create_part(
         db_cursor,
-        "Vela Honda Civic",
-        "VELA HONDA CIVIC",
-        part_type_id
+        part_type_id,
+        name="Pastilha Dianteira Civic",
+        normalized_name="PASTILHA DIANTEIRA CIVIC"
     )
 
-    result = search_by_part_type_alias(db_cursor, "vela")
+    results = search_by_part_type_alias(db_cursor, "pastilha")
 
-    assert len(result) == 1
-    assert result[0]["part_id"] == part_id
-    assert result[0]["part_type_name"] == "Vela de Ignição"
+    assert len(results) == 1
+    assert results[0]["part_id"] == part_id
+    assert results[0]["part_type_name"] == "Pastilha de Freio"
+    assert results[0]["alias"] == "Pastilha"
 
 
 # ------------------------------------------------------
 # TESTE 5
 # Busca de equivalentes por código
 # ------------------------------------------------------
+
 def test_search_equivalents_by_code(db_cursor):
     """
-    Verifica se códigos do mesmo cluster são retornados como equivalentes.
+    Verifica se a busca por equivalentes retorna
+    códigos do mesmo cluster, exceto o código de origem.
     """
-    bosch_id = insert_manufacturer(db_cursor, "Bosch Eq Test")
-    mahle_id = insert_manufacturer(db_cursor, "Mahle Eq Test")
-
-    part_type_id = insert_part_type(db_cursor, "Filtro de Óleo", "FILTRO DE OLEO")
-    part_id = insert_part(
+    manufacturer_id_1 = create_manufacturer(
         db_cursor,
-        "Filtro Equivalente",
-        "FILTRO EQUIVALENTE",
-        part_type_id
-    )
-    cluster_id = insert_cluster(db_cursor, part_id)
-
-    source_code_id = insert_code(
-        db_cursor,
-        bosch_id,
-        "0986-AF0051",
-        "0986AF0051"
+        name="Bosch Eq Test",
+        manufacturer_type="aftermarket"
     )
 
-    equivalent_code_id = insert_code(
+    manufacturer_id_2 = create_manufacturer(
         db_cursor,
-        mahle_id,
-        "OC-1196",
-        "OC1196"
+        name="Mahle Eq Test",
+        manufacturer_type="aftermarket"
+    )
+
+    part_type_id = create_part_type(db_cursor)
+    part_id = create_part(db_cursor, part_type_id)
+    cluster_id = create_cluster(db_cursor, part_id)
+
+    source_code_id = create_code(
+        db_cursor,
+        manufacturer_id_1,
+        code="0986-AF0051",
+        normalized_code="0986AF0051"
+    )
+
+    equivalent_code_id = create_code(
+        db_cursor,
+        manufacturer_id_2,
+        code="OC-1196",
+        normalized_code="OC1196"
     )
 
     link_code_to_cluster(db_cursor, cluster_id, source_code_id)
     link_code_to_cluster(db_cursor, cluster_id, equivalent_code_id)
 
-    result = search_equivalents_by_code(db_cursor, "0986-AF0051")
+    results = search_equivalents_by_code(db_cursor, "0986-AF0051")
 
-    assert len(result) == 1
-    assert result[0]["equivalent_code_id"] == equivalent_code_id
-    assert result[0]["manufacturer_name"] == "Mahle Eq Test"
-    assert result[0]["part_id"] == part_id
+    assert len(results) == 1
+    assert results[0]["source_code_id"] == source_code_id
+    assert results[0]["equivalent_code_id"] == equivalent_code_id
+    assert results[0]["manufacturer_name"] == "Mahle Eq Test"
+    assert results[0]["cluster_id"] == cluster_id
+    assert results[0]["part_id"] == part_id

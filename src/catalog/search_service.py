@@ -10,19 +10,33 @@ Responsável por:
 - busca por alias do tipo de peça
 - busca de equivalentes via cluster
 
-Observação:
-como a camada formal de publicação ainda não existe,
-o filtro `only_published=True` usa `catalog.parts.status = 'active'`
-como aproximação de catálogo visível.
+Observação importante:
+Este módulo opera principalmente sobre:
+
+- discovery.codes
+- catalog.clusters
+- catalog.parts
+- reference.part_types
+
+A modelagem de veículos foi refatorada no projeto, mas este arquivo
+continua centrado em busca de peças e códigos. Mesmo assim, ele foi
+ajustado para ficar consistente com a nova arquitetura do catálogo.
+
+Enquanto a camada formal de publicação ainda não estiver ativa,
+o filtro `only_published=True` continuará usando
+`catalog.parts.status = 'active'` como aproximação de catálogo visível.
 """
 
 from typing import Any
+import unicodedata
 import re
 
 
 def _rows_to_dicts(cursor) -> list[dict[str, Any]]:
     """
     Converte o resultado do cursor em lista de dicionários.
+
+    Isso facilita o consumo pelos testes, serviços e futura API.
     """
     rows = cursor.fetchall()
     columns = [desc[0] for desc in cursor.description]
@@ -31,17 +45,29 @@ def _rows_to_dicts(cursor) -> list[dict[str, Any]]:
 
 def normalize_text(value: str | None) -> str | None:
     """
-    Normaliza texto para comparação básica.
+    Normaliza texto para comparação.
 
     Regras:
     - remove espaços externos
     - converte para maiúsculas
+    - remove acentos
     - comprime espaços internos
     """
+
     if value is None:
         return None
 
-    value = value.strip().upper()
+    # remove espaços
+    value = value.strip()
+
+    # remove acentos
+    value = unicodedata.normalize("NFKD", value)
+    value = value.encode("ASCII", "ignore").decode("ASCII")
+
+    # maiúsculas
+    value = value.upper()
+
+    # comprime espaços
     value = re.sub(r"\s+", " ", value)
 
     return value
@@ -78,6 +104,11 @@ def search_by_code(
     - fabricante
     - cluster, se existir
     - peça consolidada, se existir
+    - tipo da peça, se existir
+
+    Observação:
+    O uso de LEFT JOIN permite retornar um código mesmo que ele ainda
+    não esteja associado a cluster ou part.
     """
     normalized_code = normalize_code(code)
 
@@ -86,16 +117,22 @@ def search_by_code(
             dc.id AS code_id,
             dc.code,
             dc.normalized_code,
+
             m.id AS manufacturer_id,
             m.name AS manufacturer_name,
             m.manufacturer_type,
+
             c.id AS cluster_id,
             c.cluster_type,
+
             p.id AS part_id,
             p.name AS part_name,
+            p.normalized_name AS part_normalized_name,
             p.status AS part_status,
+
             pt.id AS part_type_id,
             pt.name AS part_type_name
+
         FROM discovery.codes dc
         JOIN reference.manufacturers m
           ON m.id = dc.manufacturer_id
@@ -135,6 +172,8 @@ def search_by_part_name(
 ) -> list[dict[str, Any]]:
     """
     Busca por nome da peça consolidada.
+
+    A busca usa o campo normalized_name para facilitar comparação textual.
     """
     normalized_name = normalize_text(part_name)
 
@@ -144,9 +183,11 @@ def search_by_part_name(
             p.name AS part_name,
             p.normalized_name,
             p.status AS part_status,
+            p.description,
+
             pt.id AS part_type_id,
-            pt.name AS part_type_name,
-            p.description
+            pt.name AS part_type_name
+
         FROM catalog.parts p
         JOIN reference.part_types pt
           ON pt.id = p.part_type_id
@@ -178,6 +219,11 @@ def search_by_part_type(
 ) -> list[dict[str, Any]]:
     """
     Busca peças por tipo de peça.
+
+    Exemplo:
+    - filtro de óleo
+    - vela de ignição
+    - pastilha de freio
     """
     normalized_name = normalize_text(part_type_name)
 
@@ -185,9 +231,12 @@ def search_by_part_type(
         SELECT
             p.id AS part_id,
             p.name AS part_name,
+            p.normalized_name,
             p.status AS part_status,
+
             pt.id AS part_type_id,
             pt.name AS part_type_name
+
         FROM catalog.parts p
         JOIN reference.part_types pt
           ON pt.id = p.part_type_id
@@ -219,6 +268,11 @@ def search_by_part_type_alias(
 ) -> list[dict[str, Any]]:
     """
     Busca peças por alias de tipo de peça.
+
+    Exemplo:
+    - "filtro óleo"
+    - "vela"
+    - "pastilha"
     """
     normalized_alias = normalize_text(alias)
 
@@ -226,10 +280,14 @@ def search_by_part_type_alias(
         SELECT
             p.id AS part_id,
             p.name AS part_name,
+            p.normalized_name,
             p.status AS part_status,
+
             pt.id AS part_type_id,
             pt.name AS part_type_name,
+
             pta.alias
+
         FROM reference.part_type_aliases pta
         JOIN reference.part_types pt
           ON pt.id = pta.part_type_id
@@ -264,6 +322,9 @@ def search_equivalents_by_code(
     Busca equivalentes de um código via cluster.
 
     Retorna todos os códigos do mesmo cluster, exceto o próprio código pesquisado.
+
+    Estrutura usada:
+    source_code -> source cluster -> target codes -> manufacturers -> part
     """
     normalized_code = normalize_code(code)
 
@@ -272,15 +333,22 @@ def search_equivalents_by_code(
             source_code.id AS source_code_id,
             source_code.code AS source_code,
             source_code.normalized_code AS source_normalized_code,
+
             target_code.id AS equivalent_code_id,
             target_code.code AS equivalent_code,
             target_code.normalized_code AS equivalent_normalized_code,
+
             m.id AS manufacturer_id,
             m.name AS manufacturer_name,
+            m.manufacturer_type,
+
             c.id AS cluster_id,
+            c.cluster_type,
+
             p.id AS part_id,
             p.name AS part_name,
             p.status AS part_status
+
         FROM discovery.codes source_code
         JOIN catalog.cluster_codes source_cc
           ON source_cc.code_id = source_code.id
