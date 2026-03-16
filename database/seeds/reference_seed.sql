@@ -5,105 +5,44 @@ reference_seed.sql
 
 SEED: Dados de Referência do Catálogo Automotivo
 
-Este arquivo conterá os dados iniciais das tabelas de referência do sistema.
-
-O objetivo é popular entidades estruturais e relativamente estáveis do domínio,
-permitindo que o banco tenha uma base mínima consistente para testes,
-desenvolvimento e futuras integrações.
-
-
+STATUS ATUAL
 -------------------------------------------------------------------------------
-OBJETIVO
+Este arquivo está reservado como placeholder.
+
+No momento, ele NÃO realiza carga de dados.
+
+Decisão atual do projeto:
+- manter este arquivo no fluxo oficial de bootstrap
+- preservar sua função documental
+- adiar a criação de uma seed mínima ou carga mais realista para etapa futura
+
+MOTIVAÇÃO
 -------------------------------------------------------------------------------
+Nesta fase, a validação do banco está priorizando:
+- estrutura do schema
+- seed canônica obrigatória
+- ordem correta de bootstrap
+- consistência arquitetural
 
-Inserir dados fundamentais das tabelas do schema `reference`.
+A carga de dados de referência continuará pendente para evolução posterior,
+especialmente quando houver maior maturidade da integração com a API da
+Tabela FIPE e das regras de ingestão do domínio.
 
-Esses dados servem como base para:
-
-- testes automatizados
-- desenvolvimento local
-- primeiros cenários de uso do catálogo
-- validação das regras de negócio
-
-
--------------------------------------------------------------------------------
-EXEMPLOS DE DADOS QUE PODERÃO SER INSERIDOS
--------------------------------------------------------------------------------
-
-Fabricantes
-
-    Honda
-    Toyota
-    Bosch
-    Mahle
-    NGK
-    Denso
-
-
-Tipos de fabricante
-
-    oem
-    aftermarket
-    marketplace
-    unknown
-
-
-Tipos de peça
-
-    filtro de óleo
-    filtro de ar
-    vela de ignição
-    pastilha de freio
-    amortecedor
-
-
-Aliases de tipos de peça
-
-    filtro óleo
-    vela
-    pastilha
-    amortecedor dianteiro
-
-
-Veículos e motores de exemplo
-
-    Honda Civic 2010
-    Honda Fit 2012
-    Toyota Corolla 2015
-
-    R18A1
-    L15B
-    2ZR-FE
-
-
--------------------------------------------------------------------------------
-BENEFÍCIOS
--------------------------------------------------------------------------------
-
-- acelera configuração do ambiente local
-- reduz trabalho manual no banco
-- padroniza massa inicial de testes
-- facilita demonstração do projeto
-
-
--------------------------------------------------------------------------------
 RELAÇÃO COM OUTROS ARQUIVOS
 -------------------------------------------------------------------------------
-
-Este arquivo complementa:
-
+Este arquivo deve ser executado APÓS:
 - database/schema.sql
 - database/seeds/canonical_seed.sql
 
-Enquanto `reference_seed.sql` alimenta dados estruturais do domínio,
-`canonical_seed.sql` alimenta vocabulários controlados e taxonomias.
+Este arquivo deve ser executado ANTES de:
+- arquivos SQL de views em database/views
 
-
+OBSERVAÇÃO IMPORTANTE
 -------------------------------------------------------------------------------
-STATUS
--------------------------------------------------------------------------------
-
-Arquivo reservado para implementação futura.
+Mesmo vazio, este arquivo permanece no fluxo de bootstrap para:
+- manter a ordem oficial do provisionamento
+- evitar retrabalho futuro no init do banco
+- explicitar que existe uma etapa reservada para dados de referência
 
 ===============================================================================
 */

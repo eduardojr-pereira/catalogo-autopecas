@@ -1,20 +1,28 @@
 """
 conftest.py
 
-Configuração compartilhada de testes com pytest para o catálogo automotivo.
+Configuração compartilhada de testes com pytest.
 
-Este arquivo fornece:
-- conexão com PostgreSQL
-- cursor para execução de SQL
-- rollback automático após cada teste
+Responsabilidades:
 
-Assim, cada teste roda de forma isolada e não deixa resíduos no banco.
+- ativar modo de teste
+- conectar no banco catalogo_test
+- fornecer conexão e cursor
+- garantir rollback após cada teste
+
+Isso garante isolamento completo entre testes.
 """
 
+import os
 import sys
 from pathlib import Path
 
 import pytest
+
+
+# ativa modo de teste
+os.environ["TESTING"] = "1"
+
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
@@ -24,14 +32,16 @@ from src.shared.db import get_connection  # noqa: E402
 # ------------------------------------------------------
 # FIXTURE DE CONEXÃO
 # ------------------------------------------------------
+
 @pytest.fixture
 def db_connection():
     """
-    Cria uma conexão com o PostgreSQL para ser usada nos testes.
+    Cria uma conexão com o banco de testes.
 
-    A conexão é aberta no início do teste e fechada ao final.
-    O autocommit fica desabilitado para permitir rollback controlado.
+    O autocommit permanece desabilitado para permitir
+    rollback automático após cada teste.
     """
+
     conn = get_connection()
     conn.autocommit = False
 
@@ -43,25 +53,33 @@ def db_connection():
 # ------------------------------------------------------
 # FIXTURE DE CURSOR
 # ------------------------------------------------------
+
 @pytest.fixture
 def db_cursor(db_connection):
     """
-    Cria um cursor para executar comandos SQL durante o teste.
+    Fornece cursor SQL para execução de queries nos testes.
     """
-    cur = db_connection.cursor()
-    yield cur
-    cur.close()
+
+    cursor = db_connection.cursor()
+
+    yield cursor
+
+    cursor.close()
 
 
 # ------------------------------------------------------
-# FIXTURE DE LIMPEZA
+# LIMPEZA AUTOMÁTICA
 # ------------------------------------------------------
+
 @pytest.fixture(autouse=True)
 def rollback_after_test(db_connection):
     """
-    Garante que toda alteração feita por um teste seja desfeita ao final.
+    Garante que qualquer alteração feita por um teste
+    seja revertida ao final.
 
-    Isso mantém os testes isolados e evita acúmulo de dados no banco.
+    Isso mantém o banco limpo entre testes.
     """
+
     yield
+
     db_connection.rollback()

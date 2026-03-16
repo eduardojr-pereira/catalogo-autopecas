@@ -19,13 +19,17 @@ Este arquivo deve ser executado APÓS:
 
 Este arquivo deve ser executado ANTES de:
 - database/seeds/reference_seed.sql
-- database/views/*.sql
+- os arquivos SQL de views em database/views
 - testes que dependam de dados canônicos previamente carregados
 
 Estratégia de idempotência:
 - todos os inserts usam ON CONFLICT DO NOTHING
 - isso permite reexecução segura em ambiente local
 
+Observação técnica:
+Evitar, em comentários de bloco, textos que contenham a sequência
+barra + asterisco, pois isso pode ser interpretado pelo parser SQL
+como início de um novo comentário de bloco.
 ===============================================================================
 */
 
@@ -38,7 +42,11 @@ POSITION TYPES
 Domínio canônico de posição de aplicação da peça.
 ===============================================================================
 */
-INSERT INTO reference.position_types (code, name, description)
+INSERT INTO reference.position_types (
+    code,
+    name,
+    description
+)
 VALUES
     ('front', 'Front', 'Aplicação na parte dianteira'),
     ('rear', 'Rear', 'Aplicação na parte traseira'),
@@ -57,7 +65,11 @@ SIDE TYPES
 Domínio canônico de lado de aplicação da peça.
 ===============================================================================
 */
-INSERT INTO reference.side_types (code, name, description)
+INSERT INTO reference.side_types (
+    code,
+    name,
+    description
+)
 VALUES
     ('left', 'Left', 'Aplicação no lado esquerdo'),
     ('right', 'Right', 'Aplicação no lado direito'),
@@ -73,7 +85,11 @@ FUEL TYPES
 Domínio canônico de combustível para veículos e motores.
 ===============================================================================
 */
-INSERT INTO reference.fuel_types (code, name, description)
+INSERT INTO reference.fuel_types (
+    code,
+    name,
+    description
+)
 VALUES
     ('gasoline', 'Gasoline', 'Veículo ou motor movido a gasolina'),
     ('diesel', 'Diesel', 'Veículo ou motor movido a diesel'),
@@ -91,7 +107,11 @@ BODY TYPES
 Domínio canônico de carroceria.
 ===============================================================================
 */
-INSERT INTO reference.body_types (code, name, description)
+INSERT INTO reference.body_types (
+    code,
+    name,
+    description
+)
 VALUES
     ('sedan', 'Sedan', 'Carroceria sedan'),
     ('hatch', 'Hatch', 'Carroceria hatch'),
@@ -109,7 +129,12 @@ ATTRIBUTE UNITS
 Unidades canônicas de atributos técnicos.
 ===============================================================================
 */
-INSERT INTO reference.attribute_units (code, name, symbol, description)
+INSERT INTO reference.attribute_units (
+    code,
+    name,
+    symbol,
+    description
+)
 VALUES
     ('millimeter', 'Millimeter', 'mm', 'Milímetro'),
     ('centimeter', 'Centimeter', 'cm', 'Centímetro'),
@@ -182,4 +207,4 @@ VALUES
         'numeric',
         (SELECT id FROM reference.attribute_units WHERE code = 'volt')
     )
-ON CONFLICT (code) DO NOTHING;
+ON CONFLICT (code) DO NOTHING; 

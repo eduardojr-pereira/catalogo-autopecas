@@ -4,7 +4,7 @@ CATÁLOGO AUTOMOTIVO INTELIGENTE
 DATABASE SCHEMA
 ===============================================================================
 
-Este arquivo define a ESTRUTURA do banco de dados do projeto.
+Este arquivo define a estrutura do banco de dados do projeto.
 
 Responsabilidades deste arquivo:
 - criação de schemas
@@ -12,43 +12,30 @@ Responsabilidades deste arquivo:
 - criação de constraints
 - criação de índices
 
-Responsabilidades que NÃO pertencem a este arquivo:
-- inserts de carga inicial
+Este arquivo NÃO deve conter:
+- carga inicial de dados
 - dados canônicos
-- massa de teste
+- seeds de referência
 - views
 
-O banco está organizado em cinco camadas principais:
+Fluxo oficial de provisionamento do banco:
 
-reference
-    Dados estruturais e vocabulários controlados.
+1) database/schema.sql
+2) database/seeds/canonical_seed.sql
+3) database/seeds/reference_seed.sql
+4) database/views
 
-discovery
-    Dados descobertos durante coleta e enriquecimento.
+Observação arquitetural importante
+-------------------------------------------------------------------------------
 
-catalog
-    Catálogo operacional consolidado.
+O domínio de veículos utiliza a hierarquia:
 
-compatibility
-    Motor de decisão técnica de compatibilidade.
+vehicle_brands → vehicle_models → vehicles
 
-publication
-    Versionamento e publicação do catálogo.
+Durante a fase atual do projeto, alguns campos textuais coexistem com
+campos canônicos para facilitar ingestões progressivas.
 
-Observação importante:
-Este schema foi refatorado para suportar a estrutura:
-
-vehicle_brands -> vehicle_models -> vehicles
-
-Essa modelagem é mais compatível com a futura integração com a API da
-Tabela FIPE, que será usada como fonte de marcas, modelos e veículos.
-
-Fluxo recomendado de provisionamento do banco:
-1) executar database/schema.sql
-2) executar database/seeds/canonical_seed.sql
-3) executar database/seeds/reference_seed.sql
-4) executar database/views/*.sql
-
+Campos canônicos devem ser priorizados em novos fluxos.
 ===============================================================================
 */
 
@@ -58,6 +45,7 @@ Fluxo recomendado de provisionamento do banco:
 CRIAÇÃO DOS SCHEMAS
 ===============================================================================
 */
+
 CREATE SCHEMA IF NOT EXISTS reference;
 CREATE SCHEMA IF NOT EXISTS discovery;
 CREATE SCHEMA IF NOT EXISTS catalog;
@@ -75,13 +63,7 @@ REFERENCE SCHEMA
 
 /*
 -------------------------------------------------------------------------------
-Fabricantes de peças
-
-Exemplos:
-- Honda
-- Bosch
-- Mahle
-- NGK
+Fabricantes
 -------------------------------------------------------------------------------
 */
 CREATE TABLE reference.manufacturers (
@@ -92,21 +74,17 @@ CREATE TABLE reference.manufacturers (
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
-    CHECK (manufacturer_type IN ('oem', 'aftermarket', 'marketplace', 'unknown'))
+    CHECK (manufacturer_type IN ('oem','aftermarket','marketplace','unknown'))
 );
 
 CREATE INDEX idx_manufacturers_type
 ON reference.manufacturers(manufacturer_type);
 
 
+
 /*
 -------------------------------------------------------------------------------
 Tipos de peça
-
-Exemplos:
-- Filtro de Óleo
-- Vela de Ignição
-- Pastilha de Freio
 -------------------------------------------------------------------------------
 */
 CREATE TABLE reference.part_types (
@@ -121,11 +99,10 @@ CREATE INDEX idx_part_types_normalized_name
 ON reference.part_types(normalized_name);
 
 
+
 /*
 -------------------------------------------------------------------------------
-Aliases de tipos de peça
-
-Permite busca comercial por variações do nome técnico.
+Aliases de tipo de peça
 -------------------------------------------------------------------------------
 */
 CREATE TABLE reference.part_type_aliases (
@@ -147,6 +124,7 @@ CREATE INDEX idx_part_type_aliases_normalized_alias
 ON reference.part_type_aliases(normalized_alias);
 
 
+
 /*
 -------------------------------------------------------------------------------
 Domínio canônico: posição
@@ -162,6 +140,7 @@ CREATE TABLE reference.position_types (
 
 CREATE INDEX idx_position_types_code
 ON reference.position_types(code);
+
 
 
 /*
@@ -181,6 +160,7 @@ CREATE INDEX idx_side_types_code
 ON reference.side_types(code);
 
 
+
 /*
 -------------------------------------------------------------------------------
 Domínio canônico: combustível
@@ -196,6 +176,7 @@ CREATE TABLE reference.fuel_types (
 
 CREATE INDEX idx_fuel_types_code
 ON reference.fuel_types(code);
+
 
 
 /*
@@ -215,9 +196,10 @@ CREATE INDEX idx_body_types_code
 ON reference.body_types(code);
 
 
+
 /*
 -------------------------------------------------------------------------------
-Domínio canônico: unidades de atributos
+Unidades de atributos técnicos
 -------------------------------------------------------------------------------
 */
 CREATE TABLE reference.attribute_units (
@@ -233,9 +215,10 @@ CREATE INDEX idx_attribute_units_code
 ON reference.attribute_units(code);
 
 
+
 /*
 -------------------------------------------------------------------------------
-Domínio canônico: definições de atributos técnicos
+Definições de atributos técnicos
 -------------------------------------------------------------------------------
 */
 CREATE TABLE reference.attribute_definitions (
@@ -251,26 +234,17 @@ CREATE TABLE reference.attribute_definitions (
         REFERENCES reference.attribute_units(id)
         ON DELETE SET NULL,
 
-    CHECK (data_type IN ('text', 'integer', 'numeric', 'boolean'))
+    CHECK (data_type IN ('text','integer','numeric','boolean'))
 );
 
 CREATE INDEX idx_attribute_definitions_code
 ON reference.attribute_definitions(code);
 
-CREATE INDEX idx_attribute_definitions_default_unit
-ON reference.attribute_definitions(default_unit_id);
 
 
 /*
 -------------------------------------------------------------------------------
 Marcas de veículos
-
-Esta tabela foi criada para suportar melhor a integração com a API da FIPE.
-
-Exemplos:
-- Honda
-- Toyota
-- Fiat
 -------------------------------------------------------------------------------
 */
 CREATE TABLE reference.vehicle_brands (
@@ -284,20 +258,11 @@ CREATE TABLE reference.vehicle_brands (
 CREATE INDEX idx_vehicle_brands_normalized_name
 ON reference.vehicle_brands(normalized_name);
 
-CREATE INDEX idx_vehicle_brands_fipe_brand_code
-ON reference.vehicle_brands(fipe_brand_code);
 
 
 /*
 -------------------------------------------------------------------------------
 Modelos de veículos
-
-Cada modelo pertence a uma marca.
-
-Exemplos:
-- Civic
-- Corolla
-- Gol
 -------------------------------------------------------------------------------
 */
 CREATE TABLE reference.vehicle_models (
@@ -316,22 +281,29 @@ CREATE TABLE reference.vehicle_models (
 CREATE UNIQUE INDEX idx_vehicle_models_unique
 ON reference.vehicle_models(brand_id, normalized_name);
 
-CREATE INDEX idx_vehicle_models_fipe_model_code
-ON reference.vehicle_models(fipe_model_code);
-
-CREATE INDEX idx_vehicle_models_brand_id
-ON reference.vehicle_models(brand_id);
 
 
 /*
 -------------------------------------------------------------------------------
 Veículos
+-------------------------------------------------------------------------------
 
-Representa a configuração/versionamento do veículo.
+Representa uma configuração específica de veículo.
 
-Compatibilidade temporária:
-- mantém brand_text e model_text para transição gradual
-- a nova referência oficial é model_id
+Estrutura do domínio:
+vehicle_brands → vehicle_models → vehicles
+
+Campos texto (brand_text, model_text) são transitórios.
+
+Proteção contra duplicidade lógica
+-------------------------------------------------------------------------------
+
+É aplicado um índice único parcial baseado em:
+
+(model_id, model_year, version, market)
+
+A restrição é aplicada apenas quando model_id não é NULL,
+permitindo coexistência com registros transitórios.
 -------------------------------------------------------------------------------
 */
 CREATE TABLE reference.vehicles (
@@ -370,23 +342,32 @@ CREATE TABLE reference.vehicles (
         ON DELETE SET NULL
 );
 
+
 CREATE INDEX idx_vehicles_model_id
 ON reference.vehicles(model_id);
 
 CREATE INDEX idx_vehicles_model_year
 ON reference.vehicles(model_year);
 
-CREATE INDEX idx_vehicles_fipe_vehicle_code
-ON reference.vehicles(fipe_vehicle_code);
-
-CREATE INDEX idx_vehicles_brand_model_text
-ON reference.vehicles(brand_text, model_text, model_year);
-
 CREATE INDEX idx_vehicles_body_type_id
 ON reference.vehicles(body_type_id);
 
 CREATE INDEX idx_vehicles_fuel_type_id
 ON reference.vehicles(fuel_type_id);
+
+
+/*
+Proteção contra duplicidade lógica
+*/
+CREATE UNIQUE INDEX idx_unique_vehicle_configuration
+ON reference.vehicles (
+    model_id,
+    model_year,
+    COALESCE(version,''),
+    market
+)
+WHERE model_id IS NOT NULL;
+
 
 
 /*
@@ -415,16 +396,11 @@ CREATE TABLE reference.motors (
 CREATE INDEX idx_motors_engine_family
 ON reference.motors(engine_family);
 
-CREATE INDEX idx_motors_fuel_type
-ON reference.motors(fuel_type);
-
-CREATE INDEX idx_motors_fuel_type_id
-ON reference.motors(fuel_type_id);
 
 
 /*
 -------------------------------------------------------------------------------
-Relacionamento veículo ↔ motor
+Relacionamento veículo → motor
 -------------------------------------------------------------------------------
 */
 CREATE TABLE reference.vehicle_motors (
@@ -442,9 +418,6 @@ CREATE TABLE reference.vehicle_motors (
         ON DELETE CASCADE
 );
 
-CREATE INDEX idx_vehicle_motors_motor
-ON reference.vehicle_motors(motor_id);
-
 
 
 /*
@@ -460,13 +433,9 @@ CREATE TABLE discovery.sources (
     source_type TEXT NOT NULL DEFAULT 'unknown',
     base_url TEXT,
     notes TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
-    CHECK (source_type IN ('site', 'catalog', 'marketplace', 'api', 'spreadsheet', 'manual', 'unknown'))
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_sources_type
-ON discovery.sources(source_type);
 
 
 CREATE TABLE discovery.codes (
@@ -481,14 +450,6 @@ CREATE TABLE discovery.codes (
         ON DELETE RESTRICT
 );
 
-CREATE INDEX idx_codes_normalized
-ON discovery.codes(normalized_code);
-
-CREATE UNIQUE INDEX idx_codes_unique
-ON discovery.codes(manufacturer_id, normalized_code);
-
-CREATE INDEX idx_codes_manufacturer
-ON discovery.codes(manufacturer_id);
 
 
 CREATE TABLE discovery.code_evidence (
@@ -509,26 +470,16 @@ CREATE TABLE discovery.code_evidence (
         ON DELETE SET NULL
 );
 
-CREATE INDEX idx_code_evidence_code_id
-ON discovery.code_evidence(code_id);
-
-CREATE INDEX idx_code_evidence_source_id
-ON discovery.code_evidence(source_id);
-
-CREATE INDEX idx_code_evidence_collected_at
-ON discovery.code_evidence(collected_at);
 
 
 CREATE TABLE discovery.code_equivalences (
     id SERIAL PRIMARY KEY,
-
     code_id_1 INTEGER NOT NULL,
     code_id_2 INTEGER NOT NULL,
-
     source TEXT,
     equivalence_type TEXT NOT NULL DEFAULT 'suspected',
     validation_status TEXT NOT NULL DEFAULT 'discovered',
-    confidence_score NUMERIC(4,3) NOT NULL DEFAULT 0.500,
+    confidence_score NUMERIC(4,3) NOT NULL DEFAULT 0.5,
     notes TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
@@ -538,33 +489,7 @@ CREATE TABLE discovery.code_equivalences (
 
     FOREIGN KEY (code_id_2)
         REFERENCES discovery.codes(id)
-        ON DELETE CASCADE,
-
-    CHECK (code_id_1 <> code_id_2),
-    CHECK (confidence_score >= 0.000 AND confidence_score <= 1.000),
-    CHECK (equivalence_type IN ('commercial', 'technical', 'cross_reference', 'suspected')),
-    CHECK (validation_status IN ('discovered', 'validated', 'rejected'))
-);
-
-CREATE INDEX idx_equiv_code1
-ON discovery.code_equivalences(code_id_1);
-
-CREATE INDEX idx_equiv_code2
-ON discovery.code_equivalences(code_id_2);
-
-CREATE INDEX idx_equiv_validation_status
-ON discovery.code_equivalences(validation_status);
-
-CREATE INDEX idx_equiv_type
-ON discovery.code_equivalences(equivalence_type);
-
-CREATE INDEX idx_equiv_confidence
-ON discovery.code_equivalences(confidence_score);
-
-CREATE UNIQUE INDEX idx_equiv_unique_pair
-ON discovery.code_equivalences (
-    LEAST(code_id_1, code_id_2),
-    GREATEST(code_id_1, code_id_2)
+        ON DELETE CASCADE
 );
 
 
@@ -587,21 +512,24 @@ CREATE TABLE catalog.parts (
 
     FOREIGN KEY (part_type_id)
         REFERENCES reference.part_types(id)
-        ON DELETE RESTRICT,
-
-    CHECK (status IN ('active', 'review', 'discontinued'))
+        ON DELETE RESTRICT
 );
 
-CREATE INDEX idx_parts_normalized_name
-ON catalog.parts(normalized_name);
-
-CREATE INDEX idx_parts_part_type
-ON catalog.parts(part_type_id);
-
-CREATE INDEX idx_parts_status
-ON catalog.parts(status);
 
 
+/*
+-------------------------------------------------------------------------------
+Atributos técnicos de peças
+
+Modo transitório:
+attribute_name
+
+Modo canônico:
+attribute_definition_id
+
+Estratégia futura: convergir para attribute_definition_id.
+-------------------------------------------------------------------------------
+*/
 CREATE TABLE catalog.part_attributes (
     id SERIAL PRIMARY KEY,
     part_id INTEGER NOT NULL,
@@ -626,17 +554,6 @@ CREATE TABLE catalog.part_attributes (
         ON DELETE SET NULL
 );
 
-CREATE INDEX idx_part_attributes_part_id
-ON catalog.part_attributes(part_id);
-
-CREATE INDEX idx_part_attributes_name
-ON catalog.part_attributes(attribute_name);
-
-CREATE INDEX idx_part_attributes_attribute_definition_id
-ON catalog.part_attributes(attribute_definition_id);
-
-CREATE INDEX idx_part_attributes_attribute_unit_id
-ON catalog.part_attributes(attribute_unit_id);
 
 
 CREATE TABLE catalog.clusters (
@@ -644,20 +561,9 @@ CREATE TABLE catalog.clusters (
     part_id INTEGER,
     name TEXT,
     cluster_type TEXT NOT NULL DEFAULT 'discovery',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
-    FOREIGN KEY (part_id)
-        REFERENCES catalog.parts(id)
-        ON DELETE SET NULL,
-
-    CHECK (cluster_type IN ('discovery', 'consolidated'))
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_clusters_part_id
-ON catalog.clusters(part_id);
-
-CREATE INDEX idx_clusters_type
-ON catalog.clusters(cluster_type);
 
 
 CREATE TABLE catalog.cluster_codes (
@@ -675,11 +581,6 @@ CREATE TABLE catalog.cluster_codes (
         ON DELETE CASCADE
 );
 
-CREATE INDEX idx_cluster_codes_cluster
-ON catalog.cluster_codes(cluster_id);
-
-CREATE INDEX idx_cluster_codes_code
-ON catalog.cluster_codes(code_id);
 
 
 CREATE TABLE catalog.applications (
@@ -693,7 +594,7 @@ CREATE TABLE catalog.applications (
     side_type_id INTEGER,
     notes TEXT,
     source TEXT,
-    confidence_score NUMERIC(4,3) NOT NULL DEFAULT 0.500,
+    confidence_score NUMERIC(4,3) NOT NULL DEFAULT 0.5,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
     FOREIGN KEY (cluster_id)
@@ -706,39 +607,8 @@ CREATE TABLE catalog.applications (
 
     FOREIGN KEY (vehicle_id)
         REFERENCES reference.vehicles(id)
-        ON DELETE CASCADE,
-
-    FOREIGN KEY (position_type_id)
-        REFERENCES reference.position_types(id)
-        ON DELETE SET NULL,
-
-    FOREIGN KEY (side_type_id)
-        REFERENCES reference.side_types(id)
-        ON DELETE SET NULL,
-
-    CHECK (confidence_score >= 0.000 AND confidence_score <= 1.000),
-    CHECK (side IN ('left', 'right', 'both') OR side IS NULL),
-    CHECK (position IN ('front', 'rear', 'inner', 'outer', 'upper', 'lower') OR position IS NULL),
-    CHECK (motor_id IS NOT NULL OR vehicle_id IS NOT NULL)
+        ON DELETE CASCADE
 );
-
-CREATE INDEX idx_applications_cluster
-ON catalog.applications(cluster_id);
-
-CREATE INDEX idx_applications_motor
-ON catalog.applications(motor_id);
-
-CREATE INDEX idx_applications_vehicle
-ON catalog.applications(vehicle_id);
-
-CREATE INDEX idx_applications_confidence
-ON catalog.applications(confidence_score);
-
-CREATE INDEX idx_applications_position_type_id
-ON catalog.applications(position_type_id);
-
-CREATE INDEX idx_applications_side_type_id
-ON catalog.applications(side_type_id);
 
 
 
@@ -746,12 +616,14 @@ ON catalog.applications(side_type_id);
 ===============================================================================
 COMPATIBILITY SCHEMA
 ===============================================================================
-
-Camada responsável por regras, evidências e decisões técnicas de compatibilidade.
-===============================================================================
 */
 
 
+/*
+rule_type atualmente é textual.
+
+Estratégia futura: normalizar em tabela reference.rule_types.
+*/
 CREATE TABLE compatibility.rules (
     id SERIAL PRIMARY KEY,
     name TEXT NOT NULL UNIQUE,
@@ -763,11 +635,6 @@ CREATE TABLE compatibility.rules (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_compatibility_rules_rule_type
-ON compatibility.rules(rule_type);
-
-CREATE INDEX idx_compatibility_rules_is_active
-ON compatibility.rules(is_active);
 
 
 CREATE TABLE compatibility.evidence (
@@ -781,13 +648,9 @@ CREATE TABLE compatibility.evidence (
 
     FOREIGN KEY (application_id)
         REFERENCES catalog.applications(id)
-        ON DELETE CASCADE,
-
-    CHECK (confidence_score IS NULL OR (confidence_score >= 0.000 AND confidence_score <= 1.000))
+        ON DELETE CASCADE
 );
 
-CREATE INDEX idx_compatibility_evidence_application_id
-ON compatibility.evidence(application_id);
 
 
 CREATE TABLE compatibility.decisions (
@@ -805,29 +668,14 @@ CREATE TABLE compatibility.decisions (
 
     FOREIGN KEY (rule_id)
         REFERENCES compatibility.rules(id)
-        ON DELETE SET NULL,
-
-    CHECK (decision IN ('approved', 'rejected', 'pending_review', 'inferred')),
-    CHECK (confidence_score IS NULL OR (confidence_score >= 0.000 AND confidence_score <= 1.000))
+        ON DELETE SET NULL
 );
-
-CREATE INDEX idx_compatibility_decisions_application_id
-ON compatibility.decisions(application_id);
-
-CREATE INDEX idx_compatibility_decisions_rule_id
-ON compatibility.decisions(rule_id);
-
-CREATE INDEX idx_compatibility_decisions_decision
-ON compatibility.decisions(decision);
 
 
 
 /*
 ===============================================================================
 PUBLICATION SCHEMA
-===============================================================================
-
-Controla batches, versões e snapshots do catálogo publicado.
 ===============================================================================
 */
 
@@ -837,13 +685,9 @@ CREATE TABLE publication.batches (
     started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     finished_at TIMESTAMP,
     status TEXT NOT NULL DEFAULT 'running',
-    notes TEXT,
-
-    CHECK (status IN ('running', 'completed', 'failed', 'rolled_back'))
+    notes TEXT
 );
 
-CREATE INDEX idx_publication_batches_status
-ON publication.batches(status);
 
 
 CREATE TABLE publication.catalog_versions (
@@ -858,8 +702,6 @@ CREATE TABLE publication.catalog_versions (
         ON DELETE SET NULL
 );
 
-CREATE INDEX idx_publication_catalog_versions_batch_id
-ON publication.catalog_versions(batch_id);
 
 
 CREATE TABLE publication.published_parts (
@@ -877,8 +719,6 @@ CREATE TABLE publication.published_parts (
         ON DELETE CASCADE
 );
 
-CREATE UNIQUE INDEX idx_published_parts_unique
-ON publication.published_parts(catalog_version_id, part_id);
 
 
 CREATE TABLE publication.published_applications (
@@ -895,6 +735,3 @@ CREATE TABLE publication.published_applications (
         REFERENCES catalog.applications(id)
         ON DELETE CASCADE
 );
-
-CREATE UNIQUE INDEX idx_published_applications_unique
-ON publication.published_applications(catalog_version_id, application_id);
