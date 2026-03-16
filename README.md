@@ -66,6 +66,7 @@ catalogo-autopecas/
 
 # Documentação complementar
 - Documentação técnica: `docs/`
+- INCLUIR LINKS
 
 ## Autor
 Defina aqui o responsável pelo projeto (nome e contato).
