@@ -4,7 +4,19 @@ CATÁLOGO AUTOMOTIVO INTELIGENTE
 DATABASE SCHEMA
 ===============================================================================
 
-Este arquivo define a estrutura completa do banco de dados do projeto.
+Este arquivo define a ESTRUTURA do banco de dados do projeto.
+
+Responsabilidades deste arquivo:
+- criação de schemas
+- criação de tabelas
+- criação de constraints
+- criação de índices
+
+Responsabilidades que NÃO pertencem a este arquivo:
+- inserts de carga inicial
+- dados canônicos
+- massa de teste
+- views
 
 O banco está organizado em cinco camadas principais:
 
@@ -30,6 +42,12 @@ vehicle_brands -> vehicle_models -> vehicles
 
 Essa modelagem é mais compatível com a futura integração com a API da
 Tabela FIPE, que será usada como fonte de marcas, modelos e veículos.
+
+Fluxo recomendado de provisionamento do banco:
+1) executar database/schema.sql
+2) executar database/seeds/canonical_seed.sql
+3) executar database/seeds/reference_seed.sql
+4) executar database/views/*.sql
 
 ===============================================================================
 */
@@ -880,113 +898,3 @@ CREATE TABLE publication.published_applications (
 
 CREATE UNIQUE INDEX idx_published_applications_unique
 ON publication.published_applications(catalog_version_id, application_id);
-
-
-
-/*
-===============================================================================
-CARGA INICIAL DO DOMÍNIO CANÔNICO
-===============================================================================
-*/
-
-
-INSERT INTO reference.position_types (code, name, description)
-VALUES
-    ('front', 'Front', 'Aplicação na parte dianteira'),
-    ('rear', 'Rear', 'Aplicação na parte traseira'),
-    ('inner', 'Inner', 'Aplicação interna'),
-    ('outer', 'Outer', 'Aplicação externa'),
-    ('upper', 'Upper', 'Aplicação superior'),
-    ('lower', 'Lower', 'Aplicação inferior')
-ON CONFLICT (code) DO NOTHING;
-
-
-INSERT INTO reference.side_types (code, name, description)
-VALUES
-    ('left', 'Left', 'Aplicação no lado esquerdo'),
-    ('right', 'Right', 'Aplicação no lado direito'),
-    ('both', 'Both', 'Aplicação nos dois lados')
-ON CONFLICT (code) DO NOTHING;
-
-
-INSERT INTO reference.fuel_types (code, name, description)
-VALUES
-    ('gasoline', 'Gasoline', 'Veículo ou motor movido a gasolina'),
-    ('diesel', 'Diesel', 'Veículo ou motor movido a diesel'),
-    ('flex', 'Flex', 'Veículo ou motor flexível'),
-    ('hybrid', 'Hybrid', 'Veículo híbrido'),
-    ('electric', 'Electric', 'Veículo elétrico')
-ON CONFLICT (code) DO NOTHING;
-
-
-INSERT INTO reference.body_types (code, name, description)
-VALUES
-    ('sedan', 'Sedan', 'Carroceria sedan'),
-    ('hatch', 'Hatch', 'Carroceria hatch'),
-    ('suv', 'SUV', 'Carroceria utilitário esportivo'),
-    ('pickup', 'Pickup', 'Carroceria pickup'),
-    ('wagon', 'Wagon', 'Carroceria station wagon')
-ON CONFLICT (code) DO NOTHING;
-
-
-INSERT INTO reference.attribute_units (code, name, symbol, description)
-VALUES
-    ('millimeter', 'Millimeter', 'mm', 'Milímetro'),
-    ('centimeter', 'Centimeter', 'cm', 'Centímetro'),
-    ('kilogram', 'Kilogram', 'kg', 'Quilograma'),
-    ('bar', 'Bar', 'bar', 'Unidade de pressão bar'),
-    ('volt', 'Volt', 'V', 'Unidade de tensão elétrica')
-ON CONFLICT (code) DO NOTHING;
-
-
-INSERT INTO reference.attribute_definitions (
-    code,
-    name,
-    description,
-    data_type,
-    default_unit_id
-)
-VALUES
-    (
-        'height',
-        'Height',
-        'Altura da peça',
-        'numeric',
-        (SELECT id FROM reference.attribute_units WHERE code = 'millimeter')
-    ),
-    (
-        'inner_diameter',
-        'Inner Diameter',
-        'Diâmetro interno da peça',
-        'numeric',
-        (SELECT id FROM reference.attribute_units WHERE code = 'millimeter')
-    ),
-    (
-        'outer_diameter',
-        'Outer Diameter',
-        'Diâmetro externo da peça',
-        'numeric',
-        (SELECT id FROM reference.attribute_units WHERE code = 'millimeter')
-    ),
-    (
-        'length',
-        'Length',
-        'Comprimento da peça',
-        'numeric',
-        (SELECT id FROM reference.attribute_units WHERE code = 'millimeter')
-    ),
-    (
-        'thread',
-        'Thread',
-        'Especificação de rosca da peça',
-        'text',
-        NULL
-    ),
-    (
-        'voltage',
-        'Voltage',
-        'Tensão elétrica da peça',
-        'numeric',
-        (SELECT id FROM reference.attribute_units WHERE code = 'volt')
-    )
-ON CONFLICT (code) DO NOTHING;
