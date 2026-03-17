@@ -1,132 +1,498 @@
 """
-Módulo de carga de referências de veículos no banco.
+Módulo de carga de referências de veículos.
 
 Responsabilidades:
-- receber estruturas intermediárias já parseadas;
-- aplicar persistência controlada em tabelas de referência;
-- garantir idempotência e integridade referencial;
-- concentrar regras de upsert da importação FIPE.
+- persistir marcas, modelos e veículos no banco PostgreSQL;
+- aplicar validação de campos obrigatórios antes da persistência;
+- resolver dependências relacionais entre marca, modelo e veículo;
+- garantir idempotência por meio de UPSERT com chaves externas;
+- expor um orquestrador para carga completa em ordem obrigatória.
 
 Este módulo NÃO deve:
-- chamar API externa;
-- interpretar payload bruto da FIPE;
-- conter regras de negócio que pertencem ao domínio de catálogo.
+- realizar chamadas HTTP;
+- conhecer detalhes de coleta externa;
+- transformar payload bruto da fonte;
+- depender de CLI para execução;
+- acoplar persistência com parsing.
 
-Observação:
-- neste estágio, o arquivo permanece como placeholder documentado;
-- a implementação real dependerá do contrato final com a camada de banco.
+Estratégia oficial:
+- a fonte externa é rastreada por external_source + external_code;
+- a ordem obrigatória de carga é:
+    1) marcas
+    2) modelos
+    3) veículos
+- a carga deve ser idempotente.
+
+Contrato esperado:
+brands:
+[
+    {
+        "external_code": "...",
+        "name": "..."
+    }
+]
+
+models:
+[
+    {
+        "external_code": "...",
+        "brand_external_code": "...",
+        "name": "..."
+    }
+]
+
+vehicles:
+[
+    {
+        "external_code": "...",
+        "brand_external_code": "...",
+        "model_external_code": "...",
+        "model_year": 2020,
+        "fuel_type": "...",
+        "version_name": "...",
+        "fipe_code": "..."
+    }
+]
 """
 
 from __future__ import annotations
 
-from src.ingestion.parsers.fipe_parser import (
-    ParsedFipeBrand,
-    ParsedFipeModel,
-    ParsedFipeVehicle,
-)
+from dataclasses import dataclass
+from typing import Any, Iterable, Mapping
+
+import psycopg
+from psycopg import Connection
+from psycopg.rows import dict_row
+
+
+DEFAULT_EXTERNAL_SOURCE = "fipe"
+
+
+class VehicleReferenceLoaderError(Exception):
+    """Exceção base do loader de referências de veículos."""
+
+
+class RequiredFieldError(VehicleReferenceLoaderError):
+    """Erro lançado quando um campo obrigatório não é informado."""
+
+
+class DependencyNotFoundError(VehicleReferenceLoaderError):
+    """Erro lançado quando uma dependência relacional obrigatória não existe."""
+
+
+@dataclass(frozen=True, slots=True)
+class LoadResult:
+    """
+    Resultado resumido de uma etapa de carga.
+
+    Observação:
+    - como a estratégia usa UPSERT, o contador representa o número de registros
+      processados pela etapa, e não necessariamente apenas inserções novas.
+    """
+
+    processed_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class LoadAllResult:
+    """Resultado consolidado da execução do orquestrador completo."""
+
+    brands: LoadResult
+    models: LoadResult
+    vehicles: LoadResult
 
 
 class VehicleReferenceLoader:
     """
-    Loader de persistência para marcas, modelos e veículos de referência.
+    Loader de referências de veículos com persistência direta em PostgreSQL.
 
-    O objetivo desta camada é encapsular a escrita nas tabelas:
-    - reference.vehicle_brands
-    - reference.vehicle_models
-    - reference.vehicles
+    Parâmetros:
+    - connection:
+        conexão psycopg já aberta e controlada externamente.
+    - external_source:
+        identificador oficial da fonte externa rastreada no domínio.
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        connection: Connection[Any],
+        external_source: str = DEFAULT_EXTERNAL_SOURCE,
+    ) -> None:
+        if not external_source or not external_source.strip():
+            raise ValueError("external_source deve ser informado.")
+
+        self._connection = connection
+        self._external_source = external_source.strip()
+
+    @property
+    def external_source(self) -> str:
+        """Retorna a fonte externa configurada para a carga."""
+        return self._external_source
+
+    def load_brands(self, brands: Iterable[Mapping[str, Any]]) -> LoadResult:
         """
-        Inicializa o loader.
+        Carrega marcas em reference.vehicle_brands.
 
-        Futuramente este construtor poderá receber:
-        - conexão;
-        - sessão;
-        - unit of work;
-        - repositórios especializados.
+        Regras:
+        - external_code é obrigatório;
+        - name é obrigatório;
+        - a carga é idempotente via ON CONFLICT.
         """
-        # Placeholder intencional.
-        pass
+        processed_count = 0
 
-    def upsert_brand(self, brand: ParsedFipeBrand) -> None:
+        with self._connection.transaction():
+            with self._connection.cursor() as cursor:
+                for index, brand in enumerate(brands):
+                    external_code = self._require_str(
+                        payload=brand,
+                        field_name="external_code",
+                        entity_name="brand",
+                        index=index,
+                    )
+                    name = self._require_str(
+                        payload=brand,
+                        field_name="name",
+                        entity_name="brand",
+                        index=index,
+                    )
+
+                    cursor.execute(
+                        """
+                        INSERT INTO reference.vehicle_brands (
+                            external_source,
+                            external_code,
+                            name
+                        )
+                        VALUES (%s, %s, %s)
+                        ON CONFLICT (external_source, external_code)
+                        DO UPDATE
+                        SET
+                            name = EXCLUDED.name
+                        """,
+                        (self._external_source, external_code, name),
+                    )
+                    processed_count += 1
+
+        return LoadResult(processed_count=processed_count)
+
+    def load_models(self, models: Iterable[Mapping[str, Any]]) -> LoadResult:
         """
-        Insere ou atualiza uma marca de veículo de forma idempotente.
+        Carrega modelos em reference.vehicle_models.
 
-        Chave lógica esperada para a implementação futura:
-        - external_source + external_code
-
-        Defesa secundária esperada:
-        - nome normalizado
-
-        Args:
-            brand: estrutura intermediária de marca parseada.
-
-        Raises:
-            NotImplementedError: enquanto a persistência real não for adicionada.
+        Regras:
+        - external_code é obrigatório;
+        - brand_external_code é obrigatório;
+        - name é obrigatório;
+        - a marca referenciada deve existir previamente;
+        - a carga é idempotente via ON CONFLICT.
         """
-        raise NotImplementedError("Upsert de marca ainda não foi implementado.")
+        processed_count = 0
 
-    def upsert_model(self, model: ParsedFipeModel) -> None:
+        with self._connection.transaction():
+            with self._connection.cursor(row_factory=dict_row) as cursor:
+                for index, model in enumerate(models):
+                    external_code = self._require_str(
+                        payload=model,
+                        field_name="external_code",
+                        entity_name="model",
+                        index=index,
+                    )
+                    brand_external_code = self._require_str(
+                        payload=model,
+                        field_name="brand_external_code",
+                        entity_name="model",
+                        index=index,
+                    )
+                    name = self._require_str(
+                        payload=model,
+                        field_name="name",
+                        entity_name="model",
+                        index=index,
+                    )
+
+                    brand_id = self._find_brand_id_or_raise(
+                        cursor=cursor,
+                        brand_external_code=brand_external_code,
+                        model_index=index,
+                    )
+
+                    cursor.execute(
+                        """
+                        INSERT INTO reference.vehicle_models (
+                            brand_id,
+                            external_source,
+                            external_code,
+                            name
+                        )
+                        VALUES (%s, %s, %s, %s)
+                        ON CONFLICT (external_source, external_code)
+                        DO UPDATE
+                        SET
+                            brand_id = EXCLUDED.brand_id,
+                            name = EXCLUDED.name
+                        """,
+                        (brand_id, self._external_source, external_code, name),
+                    )
+                    processed_count += 1
+
+        return LoadResult(processed_count=processed_count)
+
+    def load_vehicles(self, vehicles: Iterable[Mapping[str, Any]]) -> LoadResult:
         """
-        Insere ou atualiza um modelo de veículo de forma idempotente.
+        Carrega veículos em reference.vehicles.
 
-        Chave lógica esperada para a implementação futura:
-        - brand + external_source + external_code
-
-        Defesa secundária esperada:
-        - brand + normalized_name
-
-        Args:
-            model: estrutura intermediária de modelo parseada.
-
-        Raises:
-            NotImplementedError: enquanto a persistência real não for adicionada.
+        Regras:
+        - external_code é obrigatório;
+        - brand_external_code é obrigatório;
+        - model_external_code é obrigatório;
+        - model_year é obrigatório;
+        - fuel_type é obrigatório;
+        - version_name é obrigatório;
+        - a marca referenciada deve existir;
+        - o modelo referenciado deve existir;
+        - a carga é idempotente via ON CONFLICT.
         """
-        raise NotImplementedError("Upsert de modelo ainda não foi implementado.")
+        processed_count = 0
 
-    def upsert_vehicle(self, vehicle: ParsedFipeVehicle) -> None:
+        with self._connection.transaction():
+            with self._connection.cursor(row_factory=dict_row) as cursor:
+                for index, vehicle in enumerate(vehicles):
+                    external_code = self._require_str(
+                        payload=vehicle,
+                        field_name="external_code",
+                        entity_name="vehicle",
+                        index=index,
+                    )
+                    brand_external_code = self._require_str(
+                        payload=vehicle,
+                        field_name="brand_external_code",
+                        entity_name="vehicle",
+                        index=index,
+                    )
+                    model_external_code = self._require_str(
+                        payload=vehicle,
+                        field_name="model_external_code",
+                        entity_name="vehicle",
+                        index=index,
+                    )
+                    model_year = self._require_int(
+                        payload=vehicle,
+                        field_name="model_year",
+                        entity_name="vehicle",
+                        index=index,
+                    )
+                    fuel_type = self._require_str(
+                        payload=vehicle,
+                        field_name="fuel_type",
+                        entity_name="vehicle",
+                        index=index,
+                    )
+                    version_name = self._require_str(
+                        payload=vehicle,
+                        field_name="version_name",
+                        entity_name="vehicle",
+                        index=index,
+                    )
+                    fipe_code = self._optional_str(vehicle.get("fipe_code"))
+
+                    brand_id = self._find_brand_id_or_raise(
+                        cursor=cursor,
+                        brand_external_code=brand_external_code,
+                        model_index=index,
+                        entity_name="vehicle",
+                    )
+                    model_id = self._find_model_id_or_raise(
+                        cursor=cursor,
+                        model_external_code=model_external_code,
+                        vehicle_index=index,
+                    )
+
+                    cursor.execute(
+                        """
+                        INSERT INTO reference.vehicles (
+                            brand_id,
+                            model_id,
+                            external_source,
+                            external_code,
+                            model_year,
+                            fuel_type,
+                            version_name,
+                            fipe_code
+                        )
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (external_source, external_code)
+                        DO UPDATE
+                        SET
+                            brand_id = EXCLUDED.brand_id,
+                            model_id = EXCLUDED.model_id,
+                            model_year = EXCLUDED.model_year,
+                            fuel_type = EXCLUDED.fuel_type,
+                            version_name = EXCLUDED.version_name,
+                            fipe_code = EXCLUDED.fipe_code
+                        """,
+                        (
+                            brand_id,
+                            model_id,
+                            self._external_source,
+                            external_code,
+                            model_year,
+                            fuel_type,
+                            version_name,
+                            fipe_code,
+                        ),
+                    )
+                    processed_count += 1
+
+        return LoadResult(processed_count=processed_count)
+
+    def load_all(
+        self,
+        *,
+        brands: Iterable[Mapping[str, Any]],
+        models: Iterable[Mapping[str, Any]],
+        vehicles: Iterable[Mapping[str, Any]],
+    ) -> LoadAllResult:
         """
-        Insere ou atualiza um veículo de forma idempotente.
+        Executa a carga completa respeitando a ordem oficial do domínio.
 
-        Chave lógica esperada para a implementação futura:
-        - model + external_source + external_code
-
-        Observação:
-        - o nível de detalhe técnico da FIPE é limitado;
-        - por isso, a persistência inicial deve priorizar rastreabilidade e reprocessamento seguro.
-
-        Args:
-            vehicle: estrutura intermediária de veículo parseada.
-
-        Raises:
-            NotImplementedError: enquanto a persistência real não for adicionada.
+        Ordem obrigatória:
+        - marcas
+        - modelos
+        - veículos
         """
-        raise NotImplementedError("Upsert de veículo ainda não foi implementado.")
+        brand_result = self.load_brands(brands)
+        model_result = self.load_models(models)
+        vehicle_result = self.load_vehicles(vehicles)
 
-    def ensure_brand_exists(self, brand_external_code: str) -> None:
+        return LoadAllResult(
+            brands=brand_result,
+            models=model_result,
+            vehicles=vehicle_result,
+        )
+
+    def _find_brand_id_or_raise(
+        self,
+        *,
+        cursor: psycopg.Cursor[Any],
+        brand_external_code: str,
+        model_index: int,
+        entity_name: str = "model",
+    ) -> int:
         """
-        Garante que a marca referenciada por um modelo já exista antes da carga.
+        Busca o brand_id pela identidade externa oficial.
 
-        Este método explicita a necessidade de integridade referencial no fluxo.
-
-        Args:
-            brand_external_code: código externo da marca na FIPE.
-
-        Raises:
-            NotImplementedError: enquanto a validação real não for adicionada.
+        Lança erro explícito quando a marca ainda não foi carregada.
         """
-        raise NotImplementedError("Validação de existência de marca ainda não foi implementada.")
+        cursor.execute(
+            """
+            SELECT brand_id
+            FROM reference.vehicle_brands
+            WHERE external_source = %s
+              AND external_code = %s
+            """,
+            (self._external_source, brand_external_code),
+        )
+        row = cursor.fetchone()
 
-    def ensure_model_exists(self, brand_external_code: str, model_external_code: str) -> None:
+        if row is None:
+            raise DependencyNotFoundError(
+                f"{entity_name}[{model_index}] referencia brand_external_code "
+                f"inexistente: {brand_external_code!r}."
+            )
+
+        return int(row["brand_id"])
+
+    def _find_model_id_or_raise(
+        self,
+        *,
+        cursor: psycopg.Cursor[Any],
+        model_external_code: str,
+        vehicle_index: int,
+    ) -> int:
         """
-        Garante que o modelo referenciado por um veículo já exista antes da carga.
+        Busca o model_id pela identidade externa oficial.
 
-        Args:
-            brand_external_code: código externo da marca na FIPE.
-            model_external_code: código externo do modelo na FIPE.
-
-        Raises:
-            NotImplementedError: enquanto a validação real não for adicionada.
+        Lança erro explícito quando o modelo ainda não foi carregado.
         """
-        raise NotImplementedError("Validação de existência de modelo ainda não foi implementada.")
+        cursor.execute(
+            """
+            SELECT model_id
+            FROM reference.vehicle_models
+            WHERE external_source = %s
+              AND external_code = %s
+            """,
+            (self._external_source, model_external_code),
+        )
+        row = cursor.fetchone()
+
+        if row is None:
+            raise DependencyNotFoundError(
+                f"vehicle[{vehicle_index}] referencia model_external_code "
+                f"inexistente: {model_external_code!r}."
+            )
+
+        return int(row["model_id"])
+
+    @staticmethod
+    def _require_str(
+        *,
+        payload: Mapping[str, Any],
+        field_name: str,
+        entity_name: str,
+        index: int,
+    ) -> str:
+        """Valida e retorna um campo string obrigatório."""
+        value = payload.get(field_name)
+
+        if value is None:
+            raise RequiredFieldError(
+                f"{entity_name}[{index}] campo obrigatório ausente: {field_name!r}."
+            )
+
+        if not isinstance(value, str):
+            raise RequiredFieldError(
+                f"{entity_name}[{index}] campo {field_name!r} deve ser string."
+            )
+
+        normalized = value.strip()
+        if not normalized:
+            raise RequiredFieldError(
+                f"{entity_name}[{index}] campo {field_name!r} não pode ser vazio."
+            )
+
+        return normalized
+
+    @staticmethod
+    def _require_int(
+        *,
+        payload: Mapping[str, Any],
+        field_name: str,
+        entity_name: str,
+        index: int,
+    ) -> int:
+        """Valida e retorna um campo inteiro obrigatório."""
+        value = payload.get(field_name)
+
+        if value is None:
+            raise RequiredFieldError(
+                f"{entity_name}[{index}] campo obrigatório ausente: {field_name!r}."
+            )
+
+        if not isinstance(value, int):
+            raise RequiredFieldError(
+                f"{entity_name}[{index}] campo {field_name!r} deve ser inteiro."
+            )
+
+        return value
+
+    @staticmethod
+    def _optional_str(value: Any) -> str | None:
+        """Normaliza uma string opcional."""
+        if value is None:
+            return None
+
+        if not isinstance(value, str):
+            raise RequiredFieldError("Campo opcional informado com tipo inválido.")
+
+        normalized = value.strip()
+        return normalized or None
