@@ -8,19 +8,19 @@ Cobertura desta suíte:
 - erro ao carregar veículo sem modelo;
 - fluxo completo com load_all().
 
-Observação:
-- os testes assumem a existência do schema oficial já aplicado no banco de teste;
-- os testes usam PostgreSQL real, alinhados ao padrão do projeto.
+Observações:
+- esta suíte deve reutilizar a infraestrutura de testes já consolidada no projeto;
+- a conexão com o banco deve vir das fixtures compartilhadas em conftest.py;
+- os testes usam PostgreSQL real, alinhados ao padrão oficial do projeto.
 """
 
 from __future__ import annotations
 
-import os
+from collections.abc import Iterator
 
 import psycopg
 import pytest
 from psycopg.rows import dict_row
-from psycopg import Connection
 
 from src.ingestion.loaders.vehicle_reference_loader import (
     DependencyNotFoundError,
@@ -29,65 +29,27 @@ from src.ingestion.loaders.vehicle_reference_loader import (
 )
 
 
-def _get_test_database_dsn() -> str:
-    """
-    Resolve a URL de conexão do banco de teste.
-
-    Ordem de fallback:
-    - TEST_DATABASE_URL
-    - DATABASE_TEST_URL
-    - DATABASE_URL
-    """
-    candidates = (
-        os.getenv("TEST_DATABASE_URL"),
-        os.getenv("DATABASE_TEST_URL"),
-        os.getenv("DATABASE_URL"),
-    )
-
-    for candidate in candidates:
-        if candidate:
-            return candidate
-
-    raise RuntimeError(
-        "Defina TEST_DATABASE_URL, DATABASE_TEST_URL ou DATABASE_URL "
-        "para executar os testes do loader."
-    )
-
-
 @pytest.fixture()
-def db_connection() -> Connection:
+def loader(db_connection: psycopg.Connection) -> VehicleReferenceLoader:
     """
-    Abre uma conexão de teste isolada.
+    Instancia o loader usando a fixture compartilhada de conexão do projeto.
 
-    Cada teste:
-    - limpa as tabelas relevantes antes da execução;
-    - faz rollback/close ao final.
+    Importante:
+    - esta fixture assume que `db_connection` já existe em conftest.py;
+    - caso o nome da fixture compartilhada seja outro, basta ajustar aqui.
     """
-    connection = psycopg.connect(_get_test_database_dsn(), row_factory=dict_row)
-
-    _truncate_reference_tables(connection)
-
-    try:
-        yield connection
-    finally:
-        connection.rollback()
-        connection.close()
-
-
-@pytest.fixture()
-def loader(db_connection: Connection) -> VehicleReferenceLoader:
-    """Instancia o loader com a fonte oficial FIPE."""
     return VehicleReferenceLoader(connection=db_connection, external_source="fipe")
 
 
-def _truncate_reference_tables(connection: Connection) -> None:
+@pytest.fixture(autouse=True)
+def clean_reference_tables(db_connection: psycopg.Connection) -> Iterator[None]:
     """
-    Limpa as tabelas de referência usadas nos testes.
+    Limpa as tabelas de referência antes de cada teste.
 
-    A ordem segue a dependência relacional.
+    A limpeza segue a ordem de dependência relacional.
     """
-    with connection.transaction():
-        with connection.cursor() as cursor:
+    with db_connection.transaction():
+        with db_connection.cursor() as cursor:
             cursor.execute("TRUNCATE TABLE reference.vehicles RESTART IDENTITY CASCADE")
             cursor.execute(
                 "TRUNCATE TABLE reference.vehicle_models RESTART IDENTITY CASCADE"
@@ -96,10 +58,12 @@ def _truncate_reference_tables(connection: Connection) -> None:
                 "TRUNCATE TABLE reference.vehicle_brands RESTART IDENTITY CASCADE"
             )
 
+    yield
 
-def _count_rows(connection: Connection, table_name: str) -> int:
+
+def _count_rows(connection: psycopg.Connection, table_name: str) -> int:
     """Conta registros de uma tabela."""
-    with connection.cursor() as cursor:
+    with connection.cursor(row_factory=dict_row) as cursor:
         cursor.execute(f"SELECT COUNT(*) AS total FROM {table_name}")
         row = cursor.fetchone()
         assert row is not None
@@ -108,7 +72,7 @@ def _count_rows(connection: Connection, table_name: str) -> int:
 
 def test_load_brands_inserts_rows(
     loader: VehicleReferenceLoader,
-    db_connection: Connection,
+    db_connection: psycopg.Connection,
 ) -> None:
     """Deve inserir marcas válidas em reference.vehicle_brands."""
     brands = [
@@ -121,7 +85,7 @@ def test_load_brands_inserts_rows(
     assert result.processed_count == 2
     assert _count_rows(db_connection, "reference.vehicle_brands") == 2
 
-    with db_connection.cursor() as cursor:
+    with db_connection.cursor(row_factory=dict_row) as cursor:
         cursor.execute(
             """
             SELECT external_source, external_code, name
@@ -139,7 +103,7 @@ def test_load_brands_inserts_rows(
 
 def test_load_brands_is_idempotent_when_executed_twice(
     loader: VehicleReferenceLoader,
-    db_connection: Connection,
+    db_connection: psycopg.Connection,
 ) -> None:
     """Não deve duplicar marcas ao executar a mesma carga duas vezes."""
     brands = [
@@ -203,7 +167,7 @@ def test_load_vehicles_raises_error_when_model_does_not_exist(
 
 def test_load_all_executes_complete_flow(
     loader: VehicleReferenceLoader,
-    db_connection: Connection,
+    db_connection: psycopg.Connection,
 ) -> None:
     """Deve executar a carga completa respeitando a ordem oficial."""
     brands = [
@@ -243,7 +207,7 @@ def test_load_all_executes_complete_flow(
     assert _count_rows(db_connection, "reference.vehicle_models") == 1
     assert _count_rows(db_connection, "reference.vehicles") == 1
 
-    with db_connection.cursor() as cursor:
+    with db_connection.cursor(row_factory=dict_row) as cursor:
         cursor.execute(
             """
             SELECT
