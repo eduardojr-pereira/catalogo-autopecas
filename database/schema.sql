@@ -36,6 +36,20 @@ Durante a fase atual do projeto, alguns campos textuais coexistem com
 campos canônicos para facilitar ingestões progressivas.
 
 Campos canônicos devem ser priorizados em novos fluxos.
+
+Estratégia oficial para ingestões externas de veículos
+-------------------------------------------------------------------------------
+
+Fontes externas como a FIPE não são a identidade primária do domínio.
+A rastreabilidade oficial de ingestão deve ocorrer por:
+
+- external_source
+- external_code
+
+Essa estratégia permite:
+- idempotência por fonte
+- coexistência futura de múltiplas fontes externas
+- desacoplamento entre domínio interno e identificadores externos
 ===============================================================================
 */
 
@@ -246,16 +260,39 @@ ON reference.attribute_definitions(code);
 -------------------------------------------------------------------------------
 Marcas de veículos
 -------------------------------------------------------------------------------
+
+Estratégia de identidade externa
+-------------------------------------------------------------------------------
+
+A identidade oficial de ingestão deve ser rastreada por:
+
+- external_source
+- external_code
+
+Isso permite:
+- idempotência por fonte
+- coexistência futura de múltiplas fontes externas
+- desacoplamento da FIPE como identidade primária do domínio
+
+Observação:
+- normalized_name continua existindo para suporte a busca, matching e
+  consistência semântica interna;
+- name e normalized_name não devem ser a identidade oficial de ingestão.
+-------------------------------------------------------------------------------
 */
 CREATE TABLE reference.vehicle_brands (
     id SERIAL PRIMARY KEY,
-    name TEXT NOT NULL UNIQUE,
-    normalized_name TEXT NOT NULL UNIQUE,
-    fipe_brand_code TEXT UNIQUE,
+    name TEXT NOT NULL,
+    normalized_name TEXT NOT NULL,
+    external_source TEXT NOT NULL,
+    external_code TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_vehicle_brands_normalized_name
+CREATE UNIQUE INDEX idx_vehicle_brands_external_identity
+ON reference.vehicle_brands(external_source, external_code);
+
+CREATE UNIQUE INDEX idx_vehicle_brands_normalized_name
 ON reference.vehicle_brands(normalized_name);
 
 
@@ -264,13 +301,32 @@ ON reference.vehicle_brands(normalized_name);
 -------------------------------------------------------------------------------
 Modelos de veículos
 -------------------------------------------------------------------------------
+
+Estratégia de identidade externa
+-------------------------------------------------------------------------------
+
+Assim como em marcas, a identidade oficial de ingestão deve ser rastreada por:
+
+- external_source
+- external_code
+
+Para a FIPE, a recomendação arquitetural é que o parser materialize
+external_code composto e estável, por exemplo:
+
+brand_code:model_code
+
+Proteções mantidas:
+- unicidade semântica interna por (brand_id, normalized_name)
+- unicidade técnica de ingestão por (external_source, external_code)
+-------------------------------------------------------------------------------
 */
 CREATE TABLE reference.vehicle_models (
     id SERIAL PRIMARY KEY,
     brand_id INTEGER NOT NULL,
     name TEXT NOT NULL,
     normalized_name TEXT NOT NULL,
-    fipe_model_code TEXT,
+    external_source TEXT NOT NULL,
+    external_code TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
     FOREIGN KEY (brand_id)
@@ -278,8 +334,14 @@ CREATE TABLE reference.vehicle_models (
         ON DELETE CASCADE
 );
 
+CREATE UNIQUE INDEX idx_vehicle_models_external_identity
+ON reference.vehicle_models(external_source, external_code);
+
 CREATE UNIQUE INDEX idx_vehicle_models_unique
 ON reference.vehicle_models(brand_id, normalized_name);
+
+CREATE INDEX idx_vehicle_models_brand_id
+ON reference.vehicle_models(brand_id);
 
 
 
@@ -290,32 +352,60 @@ Veículos
 
 Representa uma configuração específica de veículo.
 
-Estrutura do domínio:
+Estrutura oficial do domínio:
 vehicle_brands → vehicle_models → vehicles
 
-Campos texto (brand_text, model_text) são transitórios.
+Estratégia de modelagem nesta fase
+-------------------------------------------------------------------------------
+
+Esta tabela passa a suportar simultaneamente:
+
+1) identidade oficial de ingestão:
+   - external_source
+   - external_code
+
+2) vínculo canônico com a hierarquia:
+   - brand_id
+   - model_id
+
+3) convivência transitória com campos textuais:
+   - brand_text
+   - model_text
+
+Observações:
+- os campos textuais permanecem para compatibilidade com ingestões progressivas;
+- novos fluxos devem priorizar brand_id/model_id;
+- a FIPE não é a identidade primária do domínio, mas sim uma fonte externa;
+- por isso, a idempotência oficial deve ocorrer por:
+    UNIQUE (external_source, external_code)
 
 Proteção contra duplicidade lógica
 -------------------------------------------------------------------------------
 
-É aplicado um índice único parcial baseado em:
+A restrição lógica por configuração permanece útil, mas não substitui
+a identidade externa oficial.
 
-(model_id, model_year, version, market)
+Nesta revisão, a proteção lógica considera:
+- model_id
+- model_year
+- version_name
+- fuel_type
+- market
 
-A restrição é aplicada apenas quando model_id não é NULL,
-permitindo coexistência com registros transitórios.
+A restrição é parcial e só se aplica quando model_id não é NULL.
 -------------------------------------------------------------------------------
 */
 CREATE TABLE reference.vehicles (
     id SERIAL PRIMARY KEY,
 
+    brand_id INTEGER,
     model_id INTEGER,
 
     brand_text TEXT,
     model_text TEXT,
 
     model_year INTEGER NOT NULL,
-    version TEXT,
+    version_name TEXT,
 
     body_type TEXT,
     body_type_id INTEGER,
@@ -325,9 +415,16 @@ CREATE TABLE reference.vehicles (
 
     market TEXT NOT NULL DEFAULT 'BR',
 
-    fipe_vehicle_code TEXT,
+    fipe_code TEXT,
+
+    external_source TEXT NOT NULL,
+    external_code TEXT NOT NULL,
 
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (brand_id)
+        REFERENCES reference.vehicle_brands(id)
+        ON DELETE SET NULL,
 
     FOREIGN KEY (model_id)
         REFERENCES reference.vehicle_models(id)
@@ -342,6 +439,11 @@ CREATE TABLE reference.vehicles (
         ON DELETE SET NULL
 );
 
+CREATE UNIQUE INDEX idx_vehicles_external_identity
+ON reference.vehicles(external_source, external_code);
+
+CREATE INDEX idx_vehicles_brand_id
+ON reference.vehicles(brand_id);
 
 CREATE INDEX idx_vehicles_model_id
 ON reference.vehicles(model_id);
@@ -355,15 +457,15 @@ ON reference.vehicles(body_type_id);
 CREATE INDEX idx_vehicles_fuel_type_id
 ON reference.vehicles(fuel_type_id);
 
-
 /*
-Proteção contra duplicidade lógica
+Proteção contra duplicidade lógica de configuração
 */
 CREATE UNIQUE INDEX idx_unique_vehicle_configuration
 ON reference.vehicles (
     model_id,
     model_year,
-    COALESCE(version,''),
+    COALESCE(version_name, ''),
+    COALESCE(fuel_type, ''),
     market
 )
 WHERE model_id IS NOT NULL;
