@@ -1,20 +1,23 @@
 """
-Módulo de coleta de dados da API FIPE.
+Módulo responsável por coletar dados brutos da API pública da Tabela FIPE.
 
-Responsabilidades:
-- centralizar a comunicação HTTP com a API FIPE;
-- expor métodos de coleta desacoplados do restante do pipeline;
-- padronizar comportamento de timeout, retry e validação básica;
-- retornar payloads brutos para posterior parsing.
+Objetivo
+--------
+Encapsular o consumo HTTP da FIPE em uma camada isolada, previsível e reutilizável,
+sem acoplamento com parser, loader ou persistência.
 
-Este módulo NÃO deve:
-- conhecer detalhes do schema interno do banco;
-- aplicar regras de transformação de domínio;
-- persistir dados diretamente.
+Diretrizes de arquitetura
+-------------------------
+- Este módulo retorna dados crus da API FIPE.
+- Este módulo não realiza transformação para o schema interno.
+- Este módulo não acessa banco de dados.
+- Este módulo concentra tratamento de erros de comunicação.
+- Este módulo deve ser facilmente mockável em testes.
 
-Observação:
-- neste estágio, o arquivo atua como placeholder documentado;
-- a implementação real das chamadas HTTP será feita na etapa de cliente/coleta.
+Fonte externa
+-------------
+API pública utilizada:
+https://parallelum.com.br/fipe/api/v1
 """
 
 from __future__ import annotations
@@ -22,125 +25,195 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+import requests
 
-@dataclass(slots=True)
-class FipeApiCollectorConfig:
+
+FIPE_BASE_URL = "https://parallelum.com.br/fipe/api/v1"
+FIPE_TIMEOUT_SECONDS = 10
+ALLOWED_VEHICLE_TYPES = {"carros", "motos", "caminhoes"}
+
+
+class FipeApiError(Exception):
     """
-    Configuração do coletor da API FIPE.
+    Exceção de domínio para falhas no consumo da API FIPE.
 
-    A implementação real poderá ser alimentada futuramente por `shared.config`
-    ou por variáveis de ambiente do projeto.
+    Esta exceção padroniza erros de comunicação, payload inválido
+    e respostas inesperadas da fonte externa.
     """
 
-    base_url: str
-    timeout_seconds: float = 10.0
-    max_retries: int = 3
 
-
+@dataclass(frozen=True)
 class FipeApiCollector:
     """
-    Coletor HTTP da API FIPE.
+    Cliente HTTP síncrono para a API pública da Tabela FIPE.
 
-    Fluxo esperado:
-    1. consultar marcas;
-    2. consultar modelos por marca;
-    3. consultar anos/versões por modelo;
-    4. retornar payloads brutos para a camada de parsing.
-
-    Este coletor deve permanecer simples e previsível, funcionando como
-    fronteira externa entre o projeto e a API FIPE.
+    Parâmetros
+    ----------
+    base_url:
+        URL base da API FIPE.
+    timeout:
+        Timeout das requisições HTTP, em segundos.
+    session:
+        Sessão HTTP injetável para facilitar testes e reaproveitamento de conexão.
     """
 
-    def __init__(self, config: FipeApiCollectorConfig) -> None:
+    base_url: str = FIPE_BASE_URL
+    timeout: int = FIPE_TIMEOUT_SECONDS
+    session: requests.Session | None = None
+
+    def __post_init__(self) -> None:
         """
-        Inicializa o coletor com a configuração necessária.
+        Garante a existência de uma sessão HTTP utilizável.
 
-        Args:
-            config: configuração do coletor FIPE.
+        Como a dataclass está frozen, usamos object.__setattr__.
         """
-        self._config = config
+        if self.session is None:
+            object.__setattr__(self, "session", requests.Session())
 
-    @property
-    def base_url(self) -> str:
+    def list_brands(self, vehicle_type: str) -> list[dict[str, Any]]:
         """
-        Retorna a URL base configurada para a API FIPE.
+        Lista marcas para um tipo de veículo.
+
+        Exemplo de endpoint:
+        GET /carros/marcas
         """
-        return self._config.base_url
+        self._validate_vehicle_type(vehicle_type)
+        path = f"/{vehicle_type}/marcas"
+        response = self._get_json(path)
 
-    def get_brands(self) -> list[dict[str, Any]]:
+        if response is None:
+            return []
+
+        if not isinstance(response, list):
+            raise FipeApiError("Resposta inválida ao listar marcas da FIPE.")
+
+        return response
+
+    def list_models(self, vehicle_type: str, brand_code: str) -> list[dict[str, Any]]:
         """
-        Coleta a lista bruta de marcas da API FIPE.
+        Lista modelos de uma marca.
 
-        Returns:
-            Lista de dicionários exatamente no formato retornado pela API externa.
+        Exemplo de endpoint:
+        GET /carros/marcas/{brand_code}/modelos
 
-        Raises:
-            NotImplementedError: enquanto a implementação real não for adicionada.
+        Observação
+        ----------
+        A FIPE normalmente retorna um objeto com chaves como:
+        {
+            "modelos": [...],
+            "anos": [...]
+        }
+
+        Aqui padronizamos o retorno apenas para a lista de modelos.
         """
-        raise NotImplementedError("Implementação do endpoint de marcas ainda não foi adicionada.")
+        self._validate_vehicle_type(vehicle_type)
+        path = f"/{vehicle_type}/marcas/{brand_code}/modelos"
+        response = self._get_json(path)
 
-    def get_models(self, brand_code: str) -> dict[str, Any]:
+        if response is None:
+            return []
+
+        if not isinstance(response, dict):
+            raise FipeApiError("Resposta inválida ao listar modelos da FIPE.")
+
+        models = response.get("modelos", [])
+
+        if not isinstance(models, list):
+            raise FipeApiError("Campo 'modelos' inválido na resposta da FIPE.")
+
+        return models
+
+    def list_years(
+        self,
+        vehicle_type: str,
+        brand_code: str,
+        model_code: str,
+    ) -> list[dict[str, Any]]:
         """
-        Coleta a lista bruta de modelos de uma marca específica.
+        Lista anos/combinações de ano e combustível para um modelo.
 
-        Args:
-            brand_code: código externo da marca na FIPE.
-
-        Returns:
-            Payload bruto retornado pela API FIPE para modelos.
-
-        Raises:
-            NotImplementedError: enquanto a implementação real não for adicionada.
+        Exemplo de endpoint:
+        GET /carros/marcas/{brand_code}/modelos/{model_code}/anos
         """
-        raise NotImplementedError("Implementação do endpoint de modelos ainda não foi adicionada.")
+        self._validate_vehicle_type(vehicle_type)
+        path = f"/{vehicle_type}/marcas/{brand_code}/modelos/{model_code}/anos"
+        response = self._get_json(path)
 
-    def get_years(self, brand_code: str, model_code: str) -> list[dict[str, Any]]:
+        if response is None:
+            return []
+
+        if not isinstance(response, list):
+            raise FipeApiError("Resposta inválida ao listar anos da FIPE.")
+
+        return response
+
+    def get_vehicle(
+        self,
+        vehicle_type: str,
+        brand_code: str,
+        model_code: str,
+        year_code: str,
+    ) -> dict[str, Any]:
         """
-        Coleta a lista bruta de anos/combinações de veículo para um modelo.
+        Obtém o detalhe de um veículo/ano específico.
 
-        Args:
-            brand_code: código externo da marca na FIPE.
-            model_code: código externo do modelo na FIPE.
-
-        Returns:
-            Lista de payloads brutos de anos/versões do modelo consultado.
-
-        Raises:
-            NotImplementedError: enquanto a implementação real não for adicionada.
+        Exemplo de endpoint:
+        GET /carros/marcas/{brand_code}/modelos/{model_code}/anos/{year_code}
         """
-        raise NotImplementedError("Implementação do endpoint de anos ainda não foi adicionada.")
+        self._validate_vehicle_type(vehicle_type)
+        path = (
+            f"/{vehicle_type}/marcas/{brand_code}/modelos/"
+            f"{model_code}/anos/{year_code}"
+        )
+        response = self._get_json(path)
 
-    def _build_url(self, resource_path: str) -> str:
+        if response is None:
+            return {}
+
+        if not isinstance(response, dict):
+            raise FipeApiError("Resposta inválida ao obter detalhe de veículo da FIPE.")
+
+        return response
+
+    def _get_json(self, path: str) -> Any:
         """
-        Constrói a URL absoluta de um recurso da API.
+        Executa GET e retorna o JSON decodificado.
 
-        Args:
-            resource_path: caminho relativo do recurso.
-
-        Returns:
-            URL absoluta montada a partir da base configurada.
+        Regras
+        ------
+        - HTTP não-2xx gera FipeApiError.
+        - Erros de rede geram FipeApiError.
+        - JSON inválido gera FipeApiError.
         """
-        base = self.base_url.rstrip("/")
-        path = resource_path.lstrip("/")
-        return f"{base}/{path}"
+        url = f"{self.base_url.rstrip('/')}/{path.lstrip('/')}"
 
-    def _request_json(self, resource_path: str) -> Any:
+        try:
+            response = self.session.get(url, timeout=self.timeout)
+            response.raise_for_status()
+        except requests.RequestException as exc:
+            raise FipeApiError(f"Falha na comunicação com a API FIPE: {exc}") from exc
+
+        if not response.content:
+            return None
+
+        try:
+            return response.json()
+        except ValueError as exc:
+            raise FipeApiError("Resposta da API FIPE não contém JSON válido.") from exc
+
+    @staticmethod
+    def _validate_vehicle_type(vehicle_type: str) -> None:
         """
-        Executa requisição HTTP e retorna JSON desserializado.
+        Valida os tipos oficiais aceitos pela FIPE.
 
-        Este método será o ponto central para:
-        - timeout;
-        - retry;
-        - tratamento de status code;
-        - validação mínima de payload.
-
-        Args:
-            resource_path: caminho relativo do endpoint.
-
-        Returns:
-            Estrutura JSON desserializada.
-
-        Raises:
-            NotImplementedError: enquanto a implementação real não for adicionada.
+        Tipos permitidos:
+        - carros
+        - motos
+        - caminhoes
         """
-        raise NotImplementedError("Camada HTTP do coletor FIPE ainda não foi implementada.")
+        if vehicle_type not in ALLOWED_VEHICLE_TYPES:
+            allowed = ", ".join(sorted(ALLOWED_VEHICLE_TYPES))
+            raise ValueError(
+                f"vehicle_type inválido: '{vehicle_type}'. "
+                f"Valores permitidos: {allowed}."
+            )
