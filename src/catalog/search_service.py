@@ -2,114 +2,24 @@
 search_service.py
 
 Serviços de busca do catálogo automotivo.
-
-Responsável por:
-- busca por código
-- busca por nome da peça
-- busca por tipo de peça
-- busca por alias do tipo de peça
-- busca de equivalentes via cluster
-
-Observação importante:
-Este módulo opera principalmente sobre:
-
-- discovery.codes
-- catalog.clusters
-- catalog.parts
-- reference.part_types
-
-A modelagem de veículos foi refatorada no projeto, mas este arquivo
-continua centrado em busca de peças e códigos. Mesmo assim, ele foi
-ajustado para ficar consistente com a nova arquitetura do catálogo.
-
-Enquanto a camada formal de publicação ainda não estiver ativa,
-o filtro `only_published=True` continuará usando
-`catalog.parts.status = 'active'` como aproximação de catálogo visível.
 """
 
 from typing import Any
-import unicodedata
-import re
+
+from src.processing.normalization.code_normalizer import normalize_code
+from src.shared.utils import normalize_text
 
 
-def _rows_to_dicts(cursor) -> list[dict[str, Any]]:
-    """
-    Converte o resultado do cursor em lista de dicionários.
-
-    Isso facilita o consumo pelos testes, serviços e futura API.
-    """
-    rows = cursor.fetchall()
-    columns = [desc[0] for desc in cursor.description]
-    return [dict(zip(columns, row)) for row in rows]
-
-
-def normalize_text(value: str | None) -> str | None:
-    """
-    Normaliza texto para comparação.
-
-    Regras:
-    - remove espaços externos
-    - converte para maiúsculas
-    - remove acentos
-    - comprime espaços internos
-    """
-
-    if value is None:
-        return None
-
-    # remove espaços
-    value = value.strip()
-
-    # remove acentos
-    value = unicodedata.normalize("NFKD", value)
-    value = value.encode("ASCII", "ignore").decode("ASCII")
-
-    # maiúsculas
-    value = value.upper()
-
-    # comprime espaços
-    value = re.sub(r"\s+", " ", value)
-
-    return value
-
-
-def normalize_code(value: str | None) -> str | None:
-    """
-    Normaliza código automotivo para busca.
-
-    Regras:
-    - remove espaços externos
-    - converte para maiúsculas
-    - remove tudo que não for letra ou número
-    """
-    if value is None:
-        return None
-
-    value = value.strip().upper()
-    value = re.sub(r"[^A-Z0-9]", "", value)
-
-    return value
-
+# ======================================================
+# BUSCA POR CÓDIGO
+# ======================================================
 
 def search_by_code(
     cursor,
     code: str,
     only_published: bool = False
 ) -> list[dict[str, Any]]:
-    """
-    Busca por código de peça.
 
-    Retorna:
-    - dados do código
-    - fabricante
-    - cluster, se existir
-    - peça consolidada, se existir
-    - tipo da peça, se existir
-
-    Observação:
-    O uso de LEFT JOIN permite retornar um código mesmo que ele ainda
-    não esteja associado a cluster ou part.
-    """
     normalized_code = normalize_code(code)
 
     query = """
@@ -149,7 +59,6 @@ def search_by_code(
 
     params: list[Any] = [normalized_code]
 
-    # por enquanto consideramos "active" como equivalente a publicado
     if only_published:
         query += " AND p.status = 'active'"
 
@@ -160,9 +69,13 @@ def search_by_code(
             dc.id
     """
 
-    cursor.execute(query, tuple(params))
-    return _rows_to_dicts(cursor)
+    cursor.execute(query, params)
+    return cursor.fetchall()
 
+
+# ======================================================
+# BUSCA POR NOME DA PEÇA
+# ======================================================
 
 def search_by_part_name(
     cursor,
@@ -170,12 +83,11 @@ def search_by_part_name(
     only_published: bool = False,
     limit: int = 50
 ) -> list[dict[str, Any]]:
-    """
-    Busca por nome da peça consolidada.
 
-    A busca usa o campo normalized_name para facilitar comparação textual.
-    """
     normalized_name = normalize_text(part_name)
+
+    if normalized_name is not None:
+        normalized_name = normalized_name.upper()
 
     query = """
         SELECT
@@ -196,20 +108,23 @@ def search_by_part_name(
 
     params: list[Any] = [f"%{normalized_name}%"]
 
-    # por enquanto consideramos "active" como equivalente a publicado
     if only_published:
         query += " AND p.status = 'active'"
 
     query += """
-        ORDER BY
-            p.name
+        ORDER BY p.name
         LIMIT %s
     """
+
     params.append(limit)
 
-    cursor.execute(query, tuple(params))
-    return _rows_to_dicts(cursor)
+    cursor.execute(query, params)
+    return cursor.fetchall()
 
+
+# ======================================================
+# BUSCA POR TIPO DE PEÇA
+# ======================================================
 
 def search_by_part_type(
     cursor,
@@ -217,15 +132,11 @@ def search_by_part_type(
     only_published: bool = False,
     limit: int = 50
 ) -> list[dict[str, Any]]:
-    """
-    Busca peças por tipo de peça.
 
-    Exemplo:
-    - filtro de óleo
-    - vela de ignição
-    - pastilha de freio
-    """
     normalized_name = normalize_text(part_type_name)
+
+    if normalized_name is not None:
+        normalized_name = normalized_name.upper()
 
     query = """
         SELECT
@@ -245,20 +156,23 @@ def search_by_part_type(
 
     params: list[Any] = [normalized_name]
 
-    # por enquanto consideramos "active" como equivalente a publicado
     if only_published:
         query += " AND p.status = 'active'"
 
     query += """
-        ORDER BY
-            p.name
+        ORDER BY p.name
         LIMIT %s
     """
+
     params.append(limit)
 
-    cursor.execute(query, tuple(params))
-    return _rows_to_dicts(cursor)
+    cursor.execute(query, params)
+    return cursor.fetchall()
 
+
+# ======================================================
+# BUSCA POR ALIAS
+# ======================================================
 
 def search_by_part_type_alias(
     cursor,
@@ -266,15 +180,11 @@ def search_by_part_type_alias(
     only_published: bool = False,
     limit: int = 50
 ) -> list[dict[str, Any]]:
-    """
-    Busca peças por alias de tipo de peça.
 
-    Exemplo:
-    - "filtro óleo"
-    - "vela"
-    - "pastilha"
-    """
     normalized_alias = normalize_text(alias)
+
+    if normalized_alias is not None:
+        normalized_alias = normalized_alias.upper()
 
     query = """
         SELECT
@@ -298,34 +208,30 @@ def search_by_part_type_alias(
 
     params: list[Any] = [normalized_alias]
 
-    # por enquanto consideramos "active" como equivalente a publicado
     if only_published:
         query += " AND p.status = 'active'"
 
     query += """
-        ORDER BY
-            p.name
+        ORDER BY p.name
         LIMIT %s
     """
+
     params.append(limit)
 
-    cursor.execute(query, tuple(params))
-    return _rows_to_dicts(cursor)
+    cursor.execute(query, params)
+    return cursor.fetchall()
 
+
+# ======================================================
+# BUSCA DE EQUIVALENTES
+# ======================================================
 
 def search_equivalents_by_code(
     cursor,
     code: str,
     only_published: bool = False
 ) -> list[dict[str, Any]]:
-    """
-    Busca equivalentes de um código via cluster.
 
-    Retorna todos os códigos do mesmo cluster, exceto o próprio código pesquisado.
-
-    Estrutura usada:
-    source_code -> source cluster -> target codes -> manufacturers -> part
-    """
     normalized_code = normalize_code(code)
 
     query = """
@@ -368,7 +274,6 @@ def search_equivalents_by_code(
 
     params: list[Any] = [normalized_code]
 
-    # por enquanto consideramos "active" como equivalente a publicado
     if only_published:
         query += " AND p.status = 'active'"
 
@@ -378,5 +283,5 @@ def search_equivalents_by_code(
             equivalent_code
     """
 
-    cursor.execute(query, tuple(params))
-    return _rows_to_dicts(cursor)
+    cursor.execute(query, params)
+    return cursor.fetchall()

@@ -6,10 +6,9 @@ Testes unitários do motor de equivalência.
 Valida:
 - construção do grafo
 - identificação de componentes conectados
-- geração de clusters a partir de equivalências
+- geração de clusters determinísticos
 """
 
-# adiciona a raiz do projeto ao path para permitir imports a partir de src
 import sys
 from pathlib import Path
 
@@ -27,22 +26,18 @@ from src.processing.equivalence.equivalence_engine import (  # noqa: E402
 # Construção do grafo
 # ------------------------------------------------------
 def test_build_graph():
-    """
-    Verifica se o grafo é construído corretamente
-    a partir das equivalências.
-    """
     equivalences = [
-        ("A", "B"),
-        ("B", "C"),
+        (1, 2),
+        (2, 3),
     ]
 
     graph = build_graph(equivalences)
 
-    assert "A" in graph
-    assert "B" in graph
-    assert "C" in graph
-    assert "B" in graph["A"]
-    assert "A" in graph["B"]
+    assert 1 in graph
+    assert 2 in graph
+    assert 3 in graph
+    assert 2 in graph[1]
+    assert 1 in graph[2]
 
 
 # ------------------------------------------------------
@@ -50,26 +45,20 @@ def test_build_graph():
 # Componentes conectados
 # ------------------------------------------------------
 def test_find_connected_components():
-    """
-    Verifica se o algoritmo identifica corretamente
-    os grupos conectados do grafo.
-    """
     graph = {
-        "A": {"B"},
-        "B": {"A", "C"},
-        "C": {"B"},
-        "D": {"E"},
-        "E": {"D"},
+        1: {2},
+        2: {1, 3},
+        3: {2},
+        4: {5},
+        5: {4},
     }
 
     components = find_connected_components(graph)
 
-    # converte os componentes para conjuntos imutáveis
-    # para facilitar comparação sem depender da ordem
     normalized = {frozenset(component) for component in components}
 
-    assert frozenset({"A", "B", "C"}) in normalized
-    assert frozenset({"D", "E"}) in normalized
+    assert frozenset({1, 2, 3}) in normalized
+    assert frozenset({4, 5}) in normalized
 
 
 # ------------------------------------------------------
@@ -77,21 +66,43 @@ def test_find_connected_components():
 # Geração de clusters
 # ------------------------------------------------------
 def test_generate_clusters():
-    """
-    Verifica se as equivalências são transformadas
-    em clusters corretamente.
-    """
     equivalences = [
-        ("BOSCH_1", "MAHLE_1"),
-        ("MAHLE_1", "FRAM_1"),
-        ("NGK_1", "DENSO_1"),
+        (1, 2),
+        (2, 3),
+        (4, 5),
     ]
 
     clusters = generate_clusters(equivalences)
 
-    # converte os clusters para conjuntos imutáveis
-    # para comparar sem depender da ordem
-    normalized = {frozenset(cluster) for cluster in clusters}
+    normalized = [set(cluster) for cluster in clusters]
 
-    assert frozenset({"BOSCH_1", "MAHLE_1", "FRAM_1"}) in normalized
-    assert frozenset({"NGK_1", "DENSO_1"}) in normalized
+    assert {1, 2, 3} in normalized
+    assert {4, 5} in normalized
+
+
+# ------------------------------------------------------
+# TESTE 4
+# Determinismo dos clusters
+# ------------------------------------------------------
+def test_generate_clusters_deterministic_order():
+    equivalences = [
+        (10, 11),
+        (1, 2),
+        (2, 3),
+    ]
+
+    clusters = generate_clusters(equivalences)
+
+    # ordenado pelo menor id do cluster
+    assert clusters[0] == {1, 2, 3}
+    assert clusters[1] == {10, 11}
+
+
+# ------------------------------------------------------
+# TESTE 5
+# Lista vazia
+# ------------------------------------------------------
+def test_generate_clusters_empty():
+    clusters = generate_clusters([])
+
+    assert clusters == []

@@ -18,76 +18,98 @@ vehicle_brands -> vehicle_models -> vehicles
 import sys
 from pathlib import Path
 
-# permite importar módulos da pasta src
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from src.catalog.fitment_service import (
-    find_parts_by_vehicle_id,
+    find_fitment_by_vehicle_filters,
     find_parts_by_motor_id,
-    find_fitment_by_vehicle_filters
+    find_parts_by_vehicle_id,
 )
+from src.shared.utils import normalize_text
 
 
-# ------------------------------------------------------
-# FUNÇÕES AUXILIARES DE CRIAÇÃO DE DADOS
-# ------------------------------------------------------
+def norm_text(value: str) -> str:
+    return normalize_text(value).upper()
 
-def create_brand(db_cursor, name="Honda"):
-    """
-    Cria uma marca de veículo.
-    """
-    db_cursor.execute("""
+
+def create_brand(cursor, name="Honda", external_source="test", external_code="brand-honda"):
+    cursor.execute("""
         INSERT INTO reference.vehicle_brands (
             name,
-            normalized_name
-        )
-        VALUES (%s, %s)
-        RETURNING id
-    """, (name, name.upper()))
-
-    return db_cursor.fetchone()[0]
-
-
-def create_model(db_cursor, brand_id, name="Civic"):
-    """
-    Cria um modelo vinculado à marca.
-    """
-    db_cursor.execute("""
-        INSERT INTO reference.vehicle_models (
-            brand_id,
-            name,
-            normalized_name
-        )
-        VALUES (%s, %s, %s)
-        RETURNING id
-    """, (brand_id, name, name.upper()))
-
-    return db_cursor.fetchone()[0]
-
-
-def create_vehicle(db_cursor, model_id, year=2010):
-    """
-    Cria um veículo.
-    """
-    db_cursor.execute("""
-        INSERT INTO reference.vehicles (
-            model_id,
-            model_year,
-            brand_text,
-            model_text
+            normalized_name,
+            external_source,
+            external_code
         )
         VALUES (%s, %s, %s, %s)
         RETURNING id
-    """, (model_id, year, "Honda", "Civic"))
+    """, (name, norm_text(name), external_source, external_code))
 
-    return db_cursor.fetchone()[0]
+    return cursor.fetchone()["id"]
 
 
-def create_motor(db_cursor):
-    """
-    Cria um motor simples.
-    """
-    db_cursor.execute("""
+def create_model(
+    cursor,
+    brand_id,
+    name="Civic",
+    external_source="test",
+    external_code="model-civic",
+):
+    cursor.execute("""
+        INSERT INTO reference.vehicle_models (
+            brand_id,
+            name,
+            normalized_name,
+            external_source,
+            external_code
+        )
+        VALUES (%s, %s, %s, %s, %s)
+        RETURNING id
+    """, (brand_id, name, norm_text(name), external_source, external_code))
+
+    return cursor.fetchone()["id"]
+
+
+def create_vehicle(
+    cursor,
+    brand_id,
+    model_id,
+    year=2010,
+    version_name="LXS 1.8",
+    market="BR",
+    external_source="test",
+    external_code="vehicle-civic-2010-lxs",
+):
+    cursor.execute("""
+        INSERT INTO reference.vehicles (
+            brand_id,
+            model_id,
+            brand_text,
+            model_text,
+            model_year,
+            version_name,
+            market,
+            external_source,
+            external_code
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        RETURNING id
+    """, (
+        brand_id,
+        model_id,
+        "Honda",
+        "Civic",
+        year,
+        version_name,
+        market,
+        external_source,
+        external_code,
+    ))
+
+    return cursor.fetchone()["id"]
+
+
+def create_motor(cursor, code="R18_TEST"):
+    cursor.execute("""
         INSERT INTO reference.motors (
             code,
             description,
@@ -95,16 +117,13 @@ def create_motor(db_cursor):
         )
         VALUES (%s, %s, %s)
         RETURNING id
-    """, ("R18_TEST", "Motor Honda R18", 1.8))
+    """, (code, "Motor Honda R18", 1.8))
 
-    return db_cursor.fetchone()[0]
+    return cursor.fetchone()["id"]
 
 
-def create_vehicle_motor_link(db_cursor, vehicle_id, motor_id):
-    """
-    Relaciona veículo e motor.
-    """
-    db_cursor.execute("""
+def create_vehicle_motor_link(cursor, vehicle_id, motor_id):
+    cursor.execute("""
         INSERT INTO reference.vehicle_motors (
             vehicle_id,
             motor_id
@@ -113,27 +132,21 @@ def create_vehicle_motor_link(db_cursor, vehicle_id, motor_id):
     """, (vehicle_id, motor_id))
 
 
-def create_part_type(db_cursor):
-    """
-    Cria um tipo de peça.
-    """
-    db_cursor.execute("""
+def create_part_type(cursor, name="Filtro de Óleo"):
+    cursor.execute("""
         INSERT INTO reference.part_types (
             name,
             normalized_name
         )
         VALUES (%s, %s)
         RETURNING id
-    """, ("Filtro de Óleo", "FILTRO DE OLEO"))
+    """, (name, norm_text(name)))
 
-    return db_cursor.fetchone()[0]
+    return cursor.fetchone()["id"]
 
 
-def create_part(db_cursor, part_type_id):
-    """
-    Cria uma peça consolidada.
-    """
-    db_cursor.execute("""
+def create_part(cursor, part_type_id, name="Filtro de Óleo Motor R18", status="active"):
+    cursor.execute("""
         INSERT INTO catalog.parts (
             name,
             normalized_name,
@@ -143,20 +156,17 @@ def create_part(db_cursor, part_type_id):
         VALUES (%s, %s, %s, %s)
         RETURNING id
     """, (
-        "Filtro de Óleo Motor R18",
-        "FILTRO DE OLEO MOTOR R18",
+        name,
+        norm_text(name),
         part_type_id,
-        "active"
+        status,
     ))
 
-    return db_cursor.fetchone()[0]
+    return cursor.fetchone()["id"]
 
 
-def create_cluster(db_cursor, part_id):
-    """
-    Cria cluster consolidado vinculado à peça.
-    """
-    db_cursor.execute("""
+def create_cluster(cursor, part_id, name="Cluster filtro óleo"):
+    cursor.execute("""
         INSERT INTO catalog.clusters (
             name,
             cluster_type,
@@ -164,116 +174,120 @@ def create_cluster(db_cursor, part_id):
         )
         VALUES (%s, %s, %s)
         RETURNING id
-    """, ("Cluster filtro óleo", "consolidated", part_id))
+    """, (name, "consolidated", part_id))
 
-    return db_cursor.fetchone()[0]
+    return cursor.fetchone()["id"]
 
 
-def create_application_motor(db_cursor, cluster_id, motor_id):
-    """
-    Cria aplicação vinculada ao motor.
-    """
-    db_cursor.execute("""
+def create_application_motor(cursor, cluster_id, motor_id):
+    cursor.execute("""
         INSERT INTO catalog.applications (
             cluster_id,
             motor_id,
             confidence_score
         )
         VALUES (%s, %s, %s)
+        RETURNING id
     """, (cluster_id, motor_id, 0.95))
 
+    return cursor.fetchone()["id"]
 
-def create_application_vehicle(db_cursor, cluster_id, vehicle_id):
-    """
-    Cria aplicação vinculada diretamente ao veículo.
-    """
-    db_cursor.execute("""
+
+def create_application_vehicle(cursor, cluster_id, vehicle_id):
+    cursor.execute("""
         INSERT INTO catalog.applications (
             cluster_id,
             vehicle_id,
             confidence_score
         )
         VALUES (%s, %s, %s)
+        RETURNING id
     """, (cluster_id, vehicle_id, 0.95))
 
+    return cursor.fetchone()["id"]
 
-# ------------------------------------------------------
-# TESTE 1
-# Busca por vehicle_id
-# ------------------------------------------------------
 
-def test_find_parts_by_vehicle_id(db_cursor):
+def test_find_parts_by_vehicle_id(db_dict_cursor):
+    cursor = db_dict_cursor
 
-    brand_id = create_brand(db_cursor)
-    model_id = create_model(db_cursor, brand_id)
-    vehicle_id = create_vehicle(db_cursor, model_id)
+    brand_id = create_brand(cursor)
+    model_id = create_model(cursor, brand_id)
+    vehicle_id = create_vehicle(cursor, brand_id, model_id)
 
-    motor_id = create_motor(db_cursor)
-    create_vehicle_motor_link(db_cursor, vehicle_id, motor_id)
+    motor_id = create_motor(cursor)
+    create_vehicle_motor_link(cursor, vehicle_id, motor_id)
 
-    part_type_id = create_part_type(db_cursor)
-    part_id = create_part(db_cursor, part_type_id)
+    part_type_id = create_part_type(cursor)
+    part_id = create_part(cursor, part_type_id)
+    cluster_id = create_cluster(cursor, part_id)
 
-    cluster_id = create_cluster(db_cursor, part_id)
+    create_application_motor(cursor, cluster_id, motor_id)
 
-    create_application_motor(db_cursor, cluster_id, motor_id)
-
-    results = find_parts_by_vehicle_id(db_cursor, vehicle_id)
+    results = find_parts_by_vehicle_id(cursor, vehicle_id)
 
     assert len(results) > 0
+    assert results[0]["vehicle_id"] == vehicle_id
+    assert results[0]["part_id"] == part_id
     assert results[0]["part_name"] == "Filtro de Óleo Motor R18"
 
 
-# ------------------------------------------------------
-# TESTE 2
-# Busca por motor_id
-# ------------------------------------------------------
+def test_find_parts_by_motor_id(db_dict_cursor):
+    cursor = db_dict_cursor
 
-def test_find_parts_by_motor_id(db_cursor):
+    motor_id = create_motor(cursor)
 
-    motor_id = create_motor(db_cursor)
+    part_type_id = create_part_type(cursor)
+    part_id = create_part(cursor, part_type_id)
+    cluster_id = create_cluster(cursor, part_id)
 
-    part_type_id = create_part_type(db_cursor)
-    part_id = create_part(db_cursor, part_type_id)
+    create_application_motor(cursor, cluster_id, motor_id)
 
-    cluster_id = create_cluster(db_cursor, part_id)
-
-    create_application_motor(db_cursor, cluster_id, motor_id)
-
-    results = find_parts_by_motor_id(db_cursor, motor_id)
+    results = find_parts_by_motor_id(cursor, motor_id)
 
     assert len(results) > 0
+    assert results[0]["motor_id"] == motor_id
+    assert results[0]["part_id"] == part_id
     assert results[0]["part_name"] == "Filtro de Óleo Motor R18"
 
 
-# ------------------------------------------------------
-# TESTE 3
-# Busca por filtros comerciais
-# ------------------------------------------------------
+def test_find_fitment_by_vehicle_filters(db_dict_cursor):
+    cursor = db_dict_cursor
 
-def test_find_fitment_by_vehicle_filters(db_cursor):
+    brand_id = create_brand(cursor, name="Honda", external_code="brand-honda-fitment")
+    model_id = create_model(
+        cursor,
+        brand_id,
+        name="Civic",
+        external_code="model-civic-fitment",
+    )
+    vehicle_id = create_vehicle(
+        cursor,
+        brand_id,
+        model_id,
+        year=2010,
+        version_name="LXS 1.8",
+        external_code="vehicle-civic-2010-lxs-fitment",
+    )
 
-    brand_id = create_brand(db_cursor)
-    model_id = create_model(db_cursor, brand_id)
-    vehicle_id = create_vehicle(db_cursor, model_id)
+    motor_id = create_motor(cursor, code="R18_TEST_FITMENT")
+    create_vehicle_motor_link(cursor, vehicle_id, motor_id)
 
-    motor_id = create_motor(db_cursor)
+    part_type_id = create_part_type(cursor, name="Filtro de Óleo")
+    part_id = create_part(cursor, part_type_id)
+    cluster_id = create_cluster(cursor, part_id)
 
-    create_vehicle_motor_link(db_cursor, vehicle_id, motor_id)
-
-    part_type_id = create_part_type(db_cursor)
-    part_id = create_part(db_cursor, part_type_id)
-
-    cluster_id = create_cluster(db_cursor, part_id)
-
-    create_application_motor(db_cursor, cluster_id, motor_id)
+    create_application_motor(cursor, cluster_id, motor_id)
 
     results = find_fitment_by_vehicle_filters(
-        db_cursor,
+        cursor,
         brand="Honda",
         model="Civic",
-        model_year=2010
+        model_year=2010,
+        part_type_name="Filtro de Óleo",
+        version="LXS 1.8",
     )
 
     assert len(results) > 0
+    assert results[0]["vehicle_id"] == vehicle_id
+    assert results[0]["part_id"] == part_id
     assert results[0]["part_name"] == "Filtro de Óleo Motor R18"

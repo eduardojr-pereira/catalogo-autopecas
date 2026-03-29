@@ -48,7 +48,7 @@ def insert_application(
         side,
         notes,
         source,
-        confidence_score
+        confidence_score,
     ))
 
     return cursor.fetchone()[0]

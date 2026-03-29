@@ -5,11 +5,32 @@ Responsável por inserir códigos de peças no banco
 de forma segura e padronizada.
 """
 
-# importa funções do normalizador
-from src.processing.normalization.code_normalizer import (
-    normalize_code,
-    code_already_exists
-)
+from src.processing.normalization.code_normalizer import normalize_code
+
+
+def code_already_exists(cursor, code: str) -> bool:
+    """
+    Verifica no banco se um código já foi inserido.
+
+    O código recebido pode vir bruto; a função normaliza antes
+    de consultar o banco.
+    """
+
+    normalized_code = normalize_code(code)
+
+    if normalized_code is None:
+        return False
+
+    cursor.execute("""
+        SELECT id
+        FROM discovery.codes
+        WHERE normalized_code = %s
+        LIMIT 1
+    """, (normalized_code,))
+
+    result = cursor.fetchone()
+
+    return result is not None
 
 
 def insert_code(cursor, manufacturer_id: int, code: str):
@@ -22,14 +43,14 @@ def insert_code(cursor, manufacturer_id: int, code: str):
     3. insere se não existir
     """
 
-    # normaliza o código recebido
     normalized = normalize_code(code)
 
-    # verifica se já existe no banco
-    if code_already_exists(cursor, normalized):
+    if normalized is None:
         return None
 
-    # insere novo código
+    if code_already_exists(cursor, code):
+        return None
+
     cursor.execute("""
         INSERT INTO discovery.codes (
             manufacturer_id,
@@ -40,6 +61,6 @@ def insert_code(cursor, manufacturer_id: int, code: str):
         RETURNING id
     """, (manufacturer_id, code, normalized))
 
-    code_id = cursor.fetchone()[0]
+    code_id = cursor.fetchone()["id"]
 
     return code_id

@@ -4,20 +4,7 @@ part_service.py
 Responsável por inserir e consultar peças consolidadas do catálogo.
 """
 
-import re
-
-
-def normalize_text(value: str) -> str:
-    """
-    Normaliza texto para facilitar busca e deduplicação leve.
-    """
-    if value is None:
-        return None
-
-    value = value.strip().upper()
-    value = re.sub(r"\s+", " ", value)
-
-    return value
+from src.shared.utils import normalize_text
 
 
 def insert_part(
@@ -31,6 +18,9 @@ def insert_part(
     Insere uma peça consolidada no catálogo.
     """
     normalized_name = normalize_text(name)
+
+    if normalized_name is not None:
+        normalized_name = normalized_name.upper()
 
     cursor.execute("""
         INSERT INTO catalog.parts (

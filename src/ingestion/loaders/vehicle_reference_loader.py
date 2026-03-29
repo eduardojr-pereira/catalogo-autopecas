@@ -136,6 +136,7 @@ class VehicleReferenceLoader:
         Regras:
         - external_code é obrigatório;
         - name é obrigatório;
+        - normalized_name é derivado internamente;
         - a carga é idempotente via ON CONFLICT.
         """
         processed_count = 0
@@ -155,21 +156,29 @@ class VehicleReferenceLoader:
                         entity_name="brand",
                         index=index,
                     )
+                    normalized_name = self._normalize_name(name)
 
                     cursor.execute(
                         """
                         INSERT INTO reference.vehicle_brands (
+                            name,
+                            normalized_name,
                             external_source,
-                            external_code,
-                            name
+                            external_code
                         )
-                        VALUES (%s, %s, %s)
+                        VALUES (%s, %s, %s, %s)
                         ON CONFLICT (external_source, external_code)
                         DO UPDATE
                         SET
-                            name = EXCLUDED.name
+                            name = EXCLUDED.name,
+                            normalized_name = EXCLUDED.normalized_name
                         """,
-                        (self._external_source, external_code, name),
+                        (
+                            name,
+                            normalized_name,
+                            self._external_source,
+                            external_code,
+                        ),
                     )
                     processed_count += 1
 
@@ -183,6 +192,7 @@ class VehicleReferenceLoader:
         - external_code é obrigatório;
         - brand_external_code é obrigatório;
         - name é obrigatório;
+        - normalized_name é derivado internamente;
         - a marca referenciada deve existir previamente;
         - a carga é idempotente via ON CONFLICT.
         """
@@ -209,29 +219,39 @@ class VehicleReferenceLoader:
                         entity_name="model",
                         index=index,
                     )
+                    normalized_name = self._normalize_name(name)
 
                     brand_id = self._find_brand_id_or_raise(
                         cursor=cursor,
                         brand_external_code=brand_external_code,
-                        model_index=index,
+                        record_index=index,
+                        entity_name="model",
                     )
 
                     cursor.execute(
                         """
                         INSERT INTO reference.vehicle_models (
                             brand_id,
+                            name,
+                            normalized_name,
                             external_source,
-                            external_code,
-                            name
+                            external_code
                         )
-                        VALUES (%s, %s, %s, %s)
+                        VALUES (%s, %s, %s, %s, %s)
                         ON CONFLICT (external_source, external_code)
                         DO UPDATE
                         SET
                             brand_id = EXCLUDED.brand_id,
-                            name = EXCLUDED.name
+                            name = EXCLUDED.name,
+                            normalized_name = EXCLUDED.normalized_name
                         """,
-                        (brand_id, self._external_source, external_code, name),
+                        (
+                            brand_id,
+                            name,
+                            normalized_name,
+                            self._external_source,
+                            external_code,
+                        ),
                     )
                     processed_count += 1
 
@@ -298,13 +318,13 @@ class VehicleReferenceLoader:
                     brand_id = self._find_brand_id_or_raise(
                         cursor=cursor,
                         brand_external_code=brand_external_code,
-                        model_index=index,
+                        record_index=index,
                         entity_name="vehicle",
                     )
                     model_id = self._find_model_id_or_raise(
                         cursor=cursor,
                         model_external_code=model_external_code,
-                        vehicle_index=index,
+                        record_index=index,
                     )
 
                     cursor.execute(
@@ -312,12 +332,12 @@ class VehicleReferenceLoader:
                         INSERT INTO reference.vehicles (
                             brand_id,
                             model_id,
-                            external_source,
-                            external_code,
                             model_year,
                             fuel_type,
                             version_name,
-                            fipe_code
+                            fipe_code,
+                            external_source,
+                            external_code
                         )
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                         ON CONFLICT (external_source, external_code)
@@ -333,12 +353,12 @@ class VehicleReferenceLoader:
                         (
                             brand_id,
                             model_id,
-                            self._external_source,
-                            external_code,
                             model_year,
                             fuel_type,
                             version_name,
                             fipe_code,
+                            self._external_source,
+                            external_code,
                         ),
                     )
                     processed_count += 1
@@ -375,17 +395,17 @@ class VehicleReferenceLoader:
         *,
         cursor: psycopg.Cursor[Any],
         brand_external_code: str,
-        model_index: int,
-        entity_name: str = "model",
+        record_index: int,
+        entity_name: str,
     ) -> int:
         """
-        Busca o brand_id pela identidade externa oficial.
+        Busca o id da marca pela identidade externa oficial.
 
         Lança erro explícito quando a marca ainda não foi carregada.
         """
         cursor.execute(
             """
-            SELECT brand_id
+            SELECT id
             FROM reference.vehicle_brands
             WHERE external_source = %s
               AND external_code = %s
@@ -396,27 +416,27 @@ class VehicleReferenceLoader:
 
         if row is None:
             raise DependencyNotFoundError(
-                f"{entity_name}[{model_index}] referencia brand_external_code "
+                f"{entity_name}[{record_index}] referencia brand_external_code "
                 f"inexistente: {brand_external_code!r}."
             )
 
-        return int(row["brand_id"])
+        return int(row["id"])
 
     def _find_model_id_or_raise(
         self,
         *,
         cursor: psycopg.Cursor[Any],
         model_external_code: str,
-        vehicle_index: int,
+        record_index: int,
     ) -> int:
         """
-        Busca o model_id pela identidade externa oficial.
+        Busca o id do modelo pela identidade externa oficial.
 
         Lança erro explícito quando o modelo ainda não foi carregado.
         """
         cursor.execute(
             """
-            SELECT model_id
+            SELECT id
             FROM reference.vehicle_models
             WHERE external_source = %s
               AND external_code = %s
@@ -427,11 +447,11 @@ class VehicleReferenceLoader:
 
         if row is None:
             raise DependencyNotFoundError(
-                f"vehicle[{vehicle_index}] referencia model_external_code "
+                f"vehicle[{record_index}] referencia model_external_code "
                 f"inexistente: {model_external_code!r}."
             )
 
-        return int(row["model_id"])
+        return int(row["id"])
 
     @staticmethod
     def _require_str(
@@ -496,3 +516,17 @@ class VehicleReferenceLoader:
 
         normalized = value.strip()
         return normalized or None
+
+    @staticmethod
+    def _normalize_name(value: str) -> str:
+        """
+        Normaliza nomes para consistência semântica mínima.
+
+        Regra atual:
+        - remove espaços externos;
+        - converte para maiúsculas.
+
+        Observação:
+        - nesta fase do projeto, não há remoção de acentos.
+        """
+        return value.strip().upper()

@@ -5,68 +5,46 @@ Responsável por transformar relações de equivalência
 em grupos conectados de códigos.
 
 Cada grupo conectado representa um cluster potencial.
+
+Responsabilidades:
+- montar grafo de equivalências
+- identificar componentes conectados
+- retornar clusters determinísticos
+
+Este módulo NÃO deve:
+- acessar banco de dados
+- conter lógica de persistência
 """
 
+from typing import Dict, List, Set, Tuple
 
-def build_graph(equivalences):
+
+def build_graph(equivalences: List[Tuple[int, int]]) -> Dict[int, Set[int]]:
     """
     Constrói um grafo simples a partir de uma lista de equivalências.
-
-    Parâmetro
-    ---------
-    equivalences : list[tuple]
-        Lista de pares (code_a, code_b)
-
-    Retorno
-    -------
-    dict
-        Dicionário onde cada código aponta para seus vizinhos.
     """
-
-    graph = {}
+    graph: Dict[int, Set[int]] = {}
 
     for code_a, code_b in equivalences:
-        # garante que o nó exista no grafo
-        if code_a not in graph:
-            graph[code_a] = set()
-
-        if code_b not in graph:
-            graph[code_b] = set()
-
-        # cria ligação nos dois sentidos
-        graph[code_a].add(code_b)
-        graph[code_b].add(code_a)
+        graph.setdefault(code_a, set()).add(code_b)
+        graph.setdefault(code_b, set()).add(code_a)
 
     return graph
 
 
-def find_connected_components(graph):
+def find_connected_components(graph: Dict[int, Set[int]]) -> List[Set[int]]:
     """
     Encontra grupos conectados dentro do grafo.
-
-    Cada grupo conectado representa um cluster de equivalência.
-
-    Parâmetro
-    ---------
-    graph : dict
-        Grafo montado pela função build_graph
-
-    Retorno
-    -------
-    list[set]
-        Lista de conjuntos, onde cada conjunto é um cluster
     """
+    visited: Set[int] = set()
+    components: List[Set[int]] = []
 
-    visited = set()
-    components = []
-
-    for node in graph:
+    for node in sorted(graph.keys()):  # 🔒 determinismo
         if node in visited:
             continue
 
-        # inicia busca em profundidade
         stack = [node]
-        component = set()
+        component: Set[int] = set()
 
         while stack:
             current = stack.pop()
@@ -77,7 +55,8 @@ def find_connected_components(graph):
             visited.add(current)
             component.add(current)
 
-            for neighbor in graph[current]:
+            # 🔒 determinismo também nos vizinhos
+            for neighbor in sorted(graph[current]):
                 if neighbor not in visited:
                     stack.append(neighbor)
 
@@ -86,17 +65,17 @@ def find_connected_components(graph):
     return components
 
 
-def generate_clusters(equivalences):
+def generate_clusters(equivalences: List[Tuple[int, int]]) -> List[Set[int]]:
     """
     Gera clusters a partir de uma lista de equivalências.
-
-    Etapas:
-    1. monta o grafo
-    2. encontra componentes conectados
-    3. retorna os clusters
     """
+    if not equivalences:
+        return []
 
     graph = build_graph(equivalences)
     clusters = find_connected_components(graph)
+
+    # 🔒 ordena clusters por menor id para consistência global
+    clusters.sort(key=lambda cluster: min(cluster))
 
     return clusters

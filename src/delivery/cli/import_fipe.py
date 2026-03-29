@@ -18,12 +18,10 @@ Observação:
 
 from __future__ import annotations
 
-from src.ingestion.collectors.fipe_api_collector import (
-    FipeApiCollector,
-    FipeApiCollectorConfig,
-)
+from src.ingestion.collectors.fipe_api_collector import FipeApiCollector
 from src.ingestion.loaders.vehicle_reference_loader import VehicleReferenceLoader
 from src.ingestion.parsers.fipe_parser import FipeParser
+from src.shared.db import get_connection
 
 
 class FipeImportCommand:
@@ -40,17 +38,11 @@ class FipeImportCommand:
     def __init__(self) -> None:
         """
         Inicializa dependências do comando.
-
-        Em versões futuras, esta composição poderá migrar para um container
-        de dependências ou factory do projeto.
         """
-        self.collector = FipeApiCollector(
-            config=FipeApiCollectorConfig(
-                base_url="https://parallelum.com.br/fipe/api/v1"
-            )
-        )
+        conn = get_connection()
+        self.collector = FipeApiCollector()
         self.parser = FipeParser()
-        self.loader = VehicleReferenceLoader()
+        self.loader = VehicleReferenceLoader(connection=conn)
 
     def import_brands(self) -> None:
         """
