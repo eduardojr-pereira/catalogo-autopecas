@@ -96,47 +96,51 @@ CATALOGO_AUTOPECAS/
 ├── tests/
 │   ├── conftest.py
 │   │
-│   ├── contract_ingestion/
-│   │   ├── test_fipe_collector.py
-│   │   ├── test_fipe_parser.py
-│   │   └── test_import_fipe_cli.py
-│   │
 │   ├── fixtures/
 │   │   └── fipe/
 │   │       ├── brands.json
 │   │       ├── models.json
 │   │       └── years.json
 │   │
-│   ├── integration/
-│   │   ├── catalog/
-│   │   │   └── test_query_service.py
+│   ├── contract/
+│   │   └── ingestion/
+│   │       ├── test_fipe_collector.py
+│   │       ├── test_fipe_parser.py
+│   │       └── test_import_fipe_cli.py
+│   │
+│   ├── unit/
+│   │   ├── normalization/
+│   │   │   └── test_code_normalizer.py
 │   │   │
-│   │   ├── database/
+│   │   └── processing/
+│   │       └── test_equivalence_engine.py
+│   │
+│   ├── integration/
+│   │   ├── infrastructure/
 │   │   │   ├── test_bootstrap_database.py
 │   │   │   └── test_database.py
 │   │   │
-│   │   └── ingestion/
-│   │       └── test_vehicle_reference_loader.py
+│   │   ├── ingestion/
+│   │   │   └── test_vehicle_reference_loader.py
+│   │   │
+│   │   ├── processing/
+│   │   │   └── test_equivalence_loader.py
+│   │   │
+│   │   └── catalog/
+│   │       └── test_query_service.py
 │   │
-│   ├── placeholders/
-│   │   ├── test_compatibility_service.py
-│   │   ├── test_publication_service.py
-│   │   └── test_versioning_service.py
-│   │
-│   ├── processing/
-│   │   └── test_equivalence_loader.py
-│   │
-│   └── unit/
-│       ├── equivalence/
-│       │   └── test_equivalence_engine.py
+│   └── placeholders/
+│       ├── processing/
+│       │   └── test_equivalence_scorer.py
 │       │
-│       ├── normalization/
-│       │   └── test_code_normalizer.py
+│       ├── compatibility/
+│       │   ├── test_compatibility_service.py
+│       │   ├── test_fitment_rule_engine.py
+│       │   └── test_rule_evaluator.py
 │       │
-│       └── placeholders/
-│           ├── test_equivalence_scorer.py
-│           ├── test_fitment_rule_engine.py
-│           └── test_rule_evaluator.py
+│       └── publication/
+│           ├── test_publication_service.py
+│           └── test_versioning_service.py
 │
 ├── .gitignore
 ├── README.md
