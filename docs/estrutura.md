@@ -1,11 +1,9 @@
 CATALOGO_AUTOPECAS/
 │
-│
 ├── data/
 │   ├── raw/
 │   ├── staging/
 │   └── processed/
-|
 │
 ├── database/
 │   ├── init/
@@ -32,15 +30,8 @@ CATALOGO_AUTOPECAS/
 ├── src/
 │   ├── catalog/
 │   │   ├── application_service.py
-│   │   ├── compatibility_service.py
-│   │   ├── decision_service.py
-│   │   ├── evidence_service.py
-│   │   ├── inference_service.py
 │   │   ├── part_service.py
-│   │   ├── publication_service.py
-│   │   ├── versioning_service.py
-│   │   ├── fitment_service.py
-│   │   └── search_service.py
+│   │   └── query_service.py
 │   │
 │   ├── delivery/
 │   │   ├── api/
@@ -63,16 +54,14 @@ CATALOGO_AUTOPECAS/
 │   │   ├── parsers/
 │   │   │   └── fipe_parser.py
 │   │   │
-│   │   └── scrapers/   (vazio)
+│   │   └── scrapers/
 │   │
 │   ├── processing/
 │   │   ├── clustering/
 │   │   │   └── cluster_service.py
 │   │   │
 │   │   ├── compatibility/
-│   │   │   ├── compatibility_scorer.py
-│   │   │   ├── fitment_rule_engine.py
-│   │   │   └── rule_evaluator.py
+│   │   │   └── compatibility_engine.py
 │   │   │
 │   │   ├── consolidation/
 │   │   │   └── consolidation_service.py
@@ -82,14 +71,20 @@ CATALOGO_AUTOPECAS/
 │   │   │   ├── equivalence_loader.py
 │   │   │   └── equivalence_scorer.py
 │   │   │
-│   │   └── normalization/
-│   │       ├── code_normalizer.py
-│   │       └── code_service.py
+│   │   ├── normalization/
+│   │   │   ├── code_normalizer.py
+│   │   │   └── code_service.py
+│   │   │
+│   │   └── review/
+│   │       └── review_service.py
+│   │
+│   ├── publication/
+│   │   ├── publication_routes.py
+│   │   ├── publication_service.py
+│   │   └── versioning_service.py
 │   │
 │   ├── reference/
-│   │   ├── attribute_definition_service.py
-│   │   ├── canonical_service.py
-│   │   └── taxonomy_service.py
+│   │   └── reference_service.py
 │   │
 │   └── shared/
 │       ├── config.py
@@ -101,37 +96,48 @@ CATALOGO_AUTOPECAS/
 ├── tests/
 │   ├── conftest.py
 │   │
+│   ├── contract_ingestion/
+│   │   ├── test_fipe_collector.py
+│   │   ├── test_fipe_parser.py
+│   │   └── test_import_fipe_cli.py
+│   │
 │   ├── fixtures/
 │   │   └── fipe/
 │   │       ├── brands.json
 │   │       ├── models.json
 │   │       └── years.json
 │   │
-│   ├── ingestion/
-│   │   ├── test_fipe_collector.py
-│   │   ├── test_fipe_parser.py
-│   │   ├── test_import_fipe_cli.py
-│   │   └── test_vehicle_reference_loader.py
-│   │
 │   ├── integration/
-│   │   ├── test_bootstrap_database.py
-│   │   ├── test_database.py
-│   │   ├── test_fitment_service.py
-│   │   ├── test_search_service.py
+│   │   ├── catalog/
+│   │   │   └── test_query_service.py
+│   │   │
+│   │   ├── database/
+│   │   │   ├── test_bootstrap_database.py
+│   │   │   └── test_database.py
+│   │   │
+│   │   └── ingestion/
+│   │       └── test_vehicle_reference_loader.py
+│   │
+│   ├── placeholders/
 │   │   ├── test_compatibility_service.py
 │   │   ├── test_publication_service.py
 │   │   └── test_versioning_service.py
 │   │
+│   ├── processing/
+│   │   └── test_equivalence_loader.py
+│   │
 │   └── unit/
-│       ├── test_equivalence_engine.py
-│       ├── test_equivalence_scorer.py
-│       ├── test_fitment_rule_engine.py
-│       ├── test_normalizer.py
-│       └── test_rule_evaluator.py
+│       ├── equivalence/
+│       │   └── test_equivalence_engine.py
+│       │
+│       ├── normalization/
+│       │   └── test_code_normalizer.py
+│       │
+│       └── placeholders/
+│           ├── test_equivalence_scorer.py
+│           ├── test_fitment_rule_engine.py
+│           └── test_rule_evaluator.py
 │
-├── .pytest_cache/
-├── .vscode/
-├── venv/
 ├── .gitignore
 ├── README.md
 └── requirements.txt
