@@ -1,54 +1,30 @@
 """
 main.py
 
-Ponto de entrada da API do catálogo automotivo.
-
-Objetivo
---------
-Servir como ponto central de inicialização da API HTTP do projeto.
-
-Este módulo deverá compor e registrar as rotas públicas de busca,
-fitment, revisão e publicação, respeitando a arquitetura consolidada
-do sistema.
-
-Responsabilidades futuras
--------------------------
-- inicializar a aplicação HTTP;
-- registrar routers da camada `delivery/api`;
-- configurar endpoints públicos do catálogo;
-- centralizar bootstrap mínimo da API;
-- preparar terreno para middleware, healthcheck e observabilidade.
-
-Áreas de exposição previstas
-----------------------------
-- rotas de busca do catálogo;
-- rotas de fitment;
-- rotas de revisão técnica;
-- rotas de publicação.
-
-Exemplos de endpoints futuros
------------------------------
-- GET /search/code/{code}
-- GET /search/part
-- GET /search/equivalents/{code}
-- GET /fitment/vehicle/{vehicle_id}
-- GET /fitment/motor/{motor_id}
-- GET /fitment/search
-
-Este módulo NÃO deve
---------------------
-- conter SQL;
-- implementar regras de domínio;
-- substituir camadas de serviço;
-- concentrar lógica de negócio da aplicação.
-
-Observação arquitetural
------------------------
-Após a consolidação de `query_service.py`, a API mínima deverá usar
-esse módulo como camada oficial de consulta do catálogo para busca
-e fitment.
-
-Status atual
-------------
-Arquivo reservado para implementação futura.
+Ponto de entrada da API mínima do catálogo automotivo.
 """
+
+from __future__ import annotations
+
+from fastapi import FastAPI
+
+from src.delivery.api.fitment_routes import router as fitment_router
+from src.delivery.api.search_routes import router as search_router
+
+app = FastAPI(
+    title="Catálogo Automotivo Inteligente",
+    version="0.1.0",
+    description="API mínima de busca e fitment do catálogo automotivo.",
+)
+
+
+@app.get("/health", tags=["health"])
+def healthcheck() -> dict:
+    """
+    Healthcheck simples da aplicação.
+    """
+    return {"status": "ok"}
+
+
+app.include_router(search_router)
+app.include_router(fitment_router)

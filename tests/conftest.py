@@ -8,9 +8,7 @@ Responsabilidades:
 - conectar no banco catalogo_test
 - fornecer conexão e cursores
 - garantir rollback após cada teste
-
-Isso garante isolamento entre testes sem conflitar
-com transações internas abertas pelo código testado.
+- fornecer cliente HTTP da API usando a mesma transação do teste
 """
 
 import os
@@ -18,6 +16,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
 from psycopg.rows import dict_row
 
 
@@ -73,3 +72,29 @@ def db_dict_cursor(db_connection):
     yield cursor
 
     cursor.close()
+
+
+@pytest.fixture
+def api_client(db_connection):
+    """
+    Cria um TestClient usando a mesma conexão transacional do teste.
+
+    Isso garante que os dados inseridos pelo teste
+    fiquem visíveis para a API.
+    """
+    from src.delivery.api.dependencies import get_db_cursor
+    from src.delivery.api.main import app
+
+    def override_get_db_cursor():
+        cursor = db_connection.cursor(row_factory=dict_row)
+        try:
+            yield cursor
+        finally:
+            cursor.close()
+
+    app.dependency_overrides[get_db_cursor] = override_get_db_cursor
+
+    with TestClient(app) as client:
+        yield client
+
+    app.dependency_overrides.clear()
